@@ -1,0 +1,35 @@
+language: rust
+rust: stable
+dist: bionic
+sudo: true
+cache:
+  directories:
+    - $HOME/.cargo
+  timeout: 1024
+
+git:
+  depth: 2
+
+addons:
+  apt:
+    packages:
+      - clang-format
+
+env:
+  global:
+    - RUST_BACKTRACE=full
+
+matrix:
+  include:
+    - name: Build
+      script:
+        - make install-tools
+        - make generate-protocol
+        - make all-via-docker
+
+    - name: Format
+      script:
+        - make fmt
+
+before_cache:
+  - rm -rf ~/.cargo/registry
