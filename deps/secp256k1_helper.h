@@ -35,36 +35,15 @@ void secp256k1_default_error_callback_fn(const char* str, void* data) {
  */
 int ckb_secp256k1_custom_verify_only_initialize(secp256k1_context* context,
                                                 void* data) {
-  size_t index = 0;
-  int running = 1;
-  while (running && index < SIZE_MAX) {
-    uint64_t len = 32;
-    uint8_t hash[32];
-
-    int ret = ckb_load_cell_by_field(hash, &len, 0, index, CKB_SOURCE_CELL_DEP,
-                                     CKB_CELL_FIELD_DATA_HASH);
-    switch (ret) {
-      case CKB_ITEM_MISSING:
-        break;
-      case CKB_SUCCESS:
-        if (memcmp(ckb_secp256k1_data_hash, hash, 32) == 0) {
-          /* Found a match, load data here */
-          len = CKB_SECP256K1_DATA_SIZE;
-          ret = ckb_load_cell_data(data, &len, 0, index, CKB_SOURCE_CELL_DEP);
-          if (ret != CKB_SUCCESS || len != CKB_SECP256K1_DATA_SIZE) {
-            return CKB_SECP256K1_HELPER_ERROR_LOADING_DATA;
-          }
-          running = 0;
-        }
-        break;
-      default:
-        return CKB_SECP256K1_HELPER_ERROR_LOADING_DATA;
-    }
-    if (running) {
-      index++;
-    }
+  size_t index = SIZE_MAX;
+  int ret = ckb_look_for_dep_with_hash(ckb_secp256k1_data_hash, &index);
+  if (ret != CKB_SUCCESS) {
+    return ret;
   }
-  if (index == SIZE_MAX) {
+  /* Found a match, load data here */
+  uint64_t len = CKB_SECP256K1_DATA_SIZE;
+  ret = ckb_load_cell_data(data, &len, 0, index, CKB_SOURCE_CELL_DEP);
+  if (ret != CKB_SUCCESS || len != CKB_SECP256K1_DATA_SIZE) {
     return CKB_SECP256K1_HELPER_ERROR_LOADING_DATA;
   }
 
