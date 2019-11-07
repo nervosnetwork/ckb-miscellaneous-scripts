@@ -169,13 +169,12 @@ int main() {
     }
     int comparable = 0;
     int cmp = ckb_since_cmp(since, input_since, &comparable);
-    if (comparable != 1 || cmp > 0)
-      return ERROR_INCORRECT_SINCE;
-    }
-    ret = verify_func(args_bytes_seg.ptr, lock_bytes, witness, witness_len);
-    if (ret != CKB_SUCCESS) {
-      return ret;
-    }
+    if (comparable != 1 || cmp > 0) return ERROR_INCORRECT_SINCE;
   }
-  return CKB_SUCCESS;
+  ret = verify_func(args_bytes_seg.ptr, lock_bytes, witness, witness_len);
+  if (ret != CKB_SUCCESS) {
+    return ret;
+  }
+}
+return CKB_SUCCESS;
 }
