@@ -63,10 +63,9 @@ int extract_witness_lock(uint8_t *witness, uint64_t len,
  * * Optional data use to generate secret hash
  */
 int main() {
-  uint8_t secp_code_buffer[100 * 1024];
-  uint64_t pad = RISCV_PGSIZE - ((uint64_t)secp_code_buffer) % RISCV_PGSIZE;
-  uint8_t *aligned_code_start = secp_code_buffer + pad;
-  size_t aligned_size = ROUNDDOWN(100 * 1024 - pad, RISCV_PGSIZE);
+  uint8_t secp_code_buffer[100 * 1024] __attribute__((aligned(RISCV_PGSIZE)));
+  uint8_t *aligned_code_start = secp_code_buffer;
+  size_t aligned_size = ROUNDDOWN(100 * 1024, RISCV_PGSIZE);
 
   void *handle = NULL;
   uint64_t consumed_size = 0;
