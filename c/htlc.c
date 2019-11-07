@@ -167,7 +167,9 @@ int main() {
     if (len != 8) {
       return ERROR_SYSCALL;
     }
-    if (ckb_epoch_number_with_fraction_cmp(since, input_since) > 0) {
+    int comparable = 0;
+    int cmp = ckb_since_cmp(since, input_since, &comparable);
+    if (comparable != 1 || cmp > 0)
       return ERROR_INCORRECT_SINCE;
     }
     ret = verify_func(args_bytes_seg.ptr, lock_bytes, witness, witness_len);
