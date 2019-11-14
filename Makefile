@@ -23,7 +23,7 @@ all-via-docker: ${PROTOCOL_HEADER} build/or.h
 build/htlc: c/htlc.c build/secp256k1_blake2b_sighash_all_lib.h
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $<
 	$(OBJCOPY) --only-keep-debug $@ $@.debug
-	$(OBJCOPY) --strip-debug $@
+	$(OBJCOPY) --strip-debug --strip-all $@
 
 build/secp256k1_blake2b_sighash_all_lib.h: build/generate_data_hash build/secp256k1_blake2b_sighash_all_lib.so
 	$< build/secp256k1_blake2b_sighash_all_lib.so secp256k1_blake2b_sighash_all_data_hash > $@
@@ -31,7 +31,7 @@ build/secp256k1_blake2b_sighash_all_lib.h: build/generate_data_hash build/secp25
 build/secp256k1_blake2b_sighash_all_lib.so: c/secp256k1_blake2b_sighash_all_lib.c build/secp256k1_data_info.h
 	$(CC) $(CFLAGS) $(LDFLAGS) -shared -o $@ $<
 	$(OBJCOPY) --only-keep-debug $@ $@.debug
-	$(OBJCOPY) --strip-debug $@
+	$(OBJCOPY) --strip-debug --strip-all $@
 
 build/secp256k1_data_info.h: build/dump_secp256k1_data
 	$<
@@ -45,7 +45,7 @@ build/dump_secp256k1_data: deps/dump_secp256k1_data.c $(SECP256K1_SRC)
 build/or: c/or.c build/or.h $(PROTOCOL_HEADER)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $<
 	$(OBJCOPY) --only-keep-debug $@ $@.debug
-	$(OBJCOPY) --strip-debug $@
+	$(OBJCOPY) --strip-debug --strip-all $@
 
 build/or.h: c/or.mol ${PROTOCOL_SCHEMA}
 	${MOLC} --language c --schema-file $< > $@
