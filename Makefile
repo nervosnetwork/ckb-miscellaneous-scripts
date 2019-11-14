@@ -7,7 +7,7 @@ LDFLAGS := -Wl,-static -fdata-sections -ffunction-sections -Wl,--gc-sections
 SECP256K1_SRC := deps/secp256k1/src/ecmult_static_pre_context.h
 MOLC := moleculec
 MOLC_VERSION := 0.4.1
-PROTOCOL_HEADER := build/protocol.h
+PROTOCOL_HEADER := build/blockchain.h
 PROTOCOL_SCHEMA := build/blockchain.mol
 PROTOCOL_VERSION := d75e4c56ffa40e17fd2fe477da3f98c5578edcd1
 PROTOCOL_URL := https://raw.githubusercontent.com/nervosnetwork/ckb/${PROTOCOL_VERSION}/util/types/schemas/blockchain.mol
@@ -15,9 +15,9 @@ PROTOCOL_URL := https://raw.githubusercontent.com/nervosnetwork/ckb/${PROTOCOL_V
 # docker pull nervos/ckb-riscv-gnu-toolchain:gnu-bionic-20191012
 BUILDER_DOCKER := nervos/ckb-riscv-gnu-toolchain@sha256:aae8a3f79705f67d505d1f1d5ddc694a4fd537ed1c7e9622420a470d59ba2ec3
 
-all: build/htlc build/secp256k1_blake2b_sighash_all_lib.so
+all: build/htlc build/secp256k1_blake2b_sighash_all_lib.so build/or
 
-all-via-docker: ${PROTOCOL_HEADER}
+all-via-docker: ${PROTOCOL_HEADER} build/or.h
 	docker run --rm -v `pwd`:/code ${BUILDER_DOCKER} bash -c "cd /code && make"
 
 build/htlc: c/htlc.c build/secp256k1_blake2b_sighash_all_lib.h
@@ -42,6 +42,14 @@ build/generate_data_hash: deps/generate_data_hash.c
 build/dump_secp256k1_data: deps/dump_secp256k1_data.c $(SECP256K1_SRC)
 	gcc -O3 -I deps/secp256k1/src -I deps/secp256k1 -o $@ $<
 
+build/or: c/or.c build/or.h $(PROTOCOL_HEADER)
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $<
+	$(OBJCOPY) --only-keep-debug $@ $@.debug
+	$(OBJCOPY) --strip-debug $@
+
+build/or.h: c/or.mol ${PROTOCOL_SCHEMA}
+	${MOLC} --language c --schema-file $< > $@
+
 $(SECP256K1_SRC):
 	cd deps/secp256k1 && \
 		./autogen.sh && \
@@ -54,8 +62,8 @@ check-moleculec-version:
 	test "$$(${MOLC} --version | awk '{ print $$2 }' | tr -d ' ')" = ${MOLC_VERSION}
 
 fmt:
-	clang-format -i -style=Google $(wildcard c/*)
-	git diff --exit-code $(wildcard c/*)
+	clang-format -i -style=Google $(wildcard c/*.h c/*.c)
+	git diff --exit-code $(wildcard c/*.h c/*.c)
 
 ${PROTOCOL_HEADER}: ${PROTOCOL_SCHEMA}
 	${MOLC} --language c --schema-file $< > $@
@@ -75,6 +83,7 @@ clean:
 	rm -rf build/generate_data_hash build/secp256k1_blake2b_sighash_all_lib.h
 	rm -rf build/secp256k1_blake2b_sighash_all_lib.so
 	rm -rf build/*.debug
+	rm -rf build/or build/or.h
 	cd deps/secp256k1 && [ -f "Makefile" ] && make clean
 
 dist: clean all

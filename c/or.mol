@@ -1,0 +1,4 @@
+import ../build/blockchain;
+
+vector OrScripts <Script>;
+vector OrWitnesses <Bytes>;

@@ -1,10 +1,10 @@
 /*
  * A simple HTLC script designed to be compatible with liquality.io
  */
+#include "blockchain.h"
 #include "ckb_dlfcn.h"
 #include "ckb_syscalls.h"
 #include "ckb_utils.h"
-#include "protocol.h"
 #include "secp256k1_blake2b_sighash_all_lib.h"
 #include "sha256.h"
 
