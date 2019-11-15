@@ -62,8 +62,8 @@ check-moleculec-version:
 	test "$$(${MOLC} --version | awk '{ print $$2 }' | tr -d ' ')" = ${MOLC_VERSION}
 
 fmt:
-	clang-format -i -style=Google $(wildcard c/*.h c/*.c)
-	git diff --exit-code $(wildcard c/*.h c/*.c)
+	clang-format -i -style=Google $(wildcard c/*.h c/*.c c/*.hpp c/*.cpp)
+	git diff --exit-code $(wildcard c/*.h c/*.c c/*.hpp c/*.cpp)
 
 ${PROTOCOL_HEADER}: ${PROTOCOL_SCHEMA}
 	${MOLC} --language c --schema-file $< > $@
