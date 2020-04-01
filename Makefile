@@ -15,7 +15,7 @@ PROTOCOL_URL := https://raw.githubusercontent.com/nervosnetwork/ckb/${PROTOCOL_V
 # docker pull nervos/ckb-riscv-gnu-toolchain:gnu-bionic-20191012
 BUILDER_DOCKER := nervos/ckb-riscv-gnu-toolchain@sha256:aae8a3f79705f67d505d1f1d5ddc694a4fd537ed1c7e9622420a470d59ba2ec3
 
-all: build/htlc build/secp256k1_blake2b_sighash_all_lib.so build/or build/simple_udt
+all: build/htlc build/secp256k1_blake2b_sighash_all_lib.so build/or build/simple_udt build/secp256k1_blake2b_sighash_all_dual
 
 all-via-docker: ${PROTOCOL_HEADER} build/or.h
 	docker run --rm -v `pwd`:/code ${BUILDER_DOCKER} bash -c "cd /code && make"
@@ -27,6 +27,11 @@ build/htlc: c/htlc.c build/secp256k1_blake2b_sighash_all_lib.h
 
 build/secp256k1_blake2b_sighash_all_lib.h: build/generate_data_hash build/secp256k1_blake2b_sighash_all_lib.so
 	$< build/secp256k1_blake2b_sighash_all_lib.so secp256k1_blake2b_sighash_all_data_hash > $@
+
+build/secp256k1_blake2b_sighash_all_dual: c/secp256k1_blake2b_sighash_all_dual.c build/secp256k1_data_info.h
+	$(CC) $(CFLAGS) $(LDFLAGS) -fPIC -fPIE -pie -Wl,--dynamic-list c/dual.syms -o $@ $<
+	$(OBJCOPY) --only-keep-debug $@ $@.debug
+	$(OBJCOPY) --strip-debug --strip-all $@
 
 build/secp256k1_blake2b_sighash_all_lib.so: c/secp256k1_blake2b_sighash_all_lib.c build/secp256k1_data_info.h
 	$(CC) $(CFLAGS) $(LDFLAGS) -shared -o $@ $<
