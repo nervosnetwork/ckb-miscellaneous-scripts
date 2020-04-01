@@ -1,9 +1,9 @@
-#include "blockchain.h"
 #include "blake2b.h"
+#include "blockchain.h"
+#include "ckb_dlfcn.h"
 #include "ckb_syscalls.h"
 #include "ckb_utils.h"
 #include "secp256k1_helper.h"
-#include "ckb_dlfcn.h"
 
 #define BLAKE2B_BLOCK_SIZE 32
 #define BLAKE160_SIZE 20
@@ -171,8 +171,7 @@ validate_secp256k1_blake2b_sighash_all(uint8_t *output_public_key_hash) {
   return CKB_SUCCESS;
 }
 
-__attribute__((visibility("default"))) int
-validate_simple() {
+__attribute__((visibility("default"))) int validate_simple() {
   int ret;
   uint64_t len = 0;
 
@@ -213,7 +212,7 @@ validate_simple() {
   return 0;
 }
 
-#define OFFSETOF(TYPE, ELEMENT) ((size_t)&(((TYPE *)0)->ELEMENT))
+#define OFFSETOF(TYPE, ELEMENT) ((size_t) & (((TYPE *)0)->ELEMENT))
 #define PT_DYNAMIC 2
 
 typedef struct {
@@ -228,14 +227,14 @@ int main() {
    * Assuming ELF header lives at 0x0, also avoiding deferencing
    * NULL pointer.
    */
-  uint64_t *phoff = (uint64_t *) OFFSETOF(Elf64_Ehdr, e_phoff);
-  uint16_t *phnum = (uint16_t *) OFFSETOF(Elf64_Ehdr, e_phnum);
-  Elf64_Phdr *program_headers = (Elf64_Phdr *) (*phoff);
-;
+  uint64_t *phoff = (uint64_t *)OFFSETOF(Elf64_Ehdr, e_phoff);
+  uint16_t *phnum = (uint16_t *)OFFSETOF(Elf64_Ehdr, e_phnum);
+  Elf64_Phdr *program_headers = (Elf64_Phdr *)(*phoff);
+  ;
   for (int i = 0; i < *phnum; i++) {
     Elf64_Phdr *program_header = &program_headers[i];
     if (program_header->p_type == PT_DYNAMIC) {
-      Elf64_Dynamic *d = (Elf64_Dynamic *) program_header->p_vaddr;
+      Elf64_Dynamic *d = (Elf64_Dynamic *)program_header->p_vaddr;
       uint64_t rela_address = 0;
       uint64_t rela_count = 0;
       while (d->type != 0) {
@@ -247,13 +246,14 @@ int main() {
         d++;
       }
       if (rela_address > 0 && rela_count > 0) {
-        Elf64_Rela *relocations = (Elf64_Rela *) rela_address;
+        Elf64_Rela *relocations = (Elf64_Rela *)rela_address;
         for (int j = 0; j < rela_count; j++) {
           Elf64_Rela *relocation = &relocations[j];
           if (relocation->r_info != R_RISCV_RELATIVE) {
             return ERROR_INVALID_ELF;
           }
-          *((uint64_t *)(relocation->r_offset)) = (uint64_t)(relocation->r_addend);
+          *((uint64_t *)(relocation->r_offset)) =
+              (uint64_t)(relocation->r_addend);
         }
       }
     }
