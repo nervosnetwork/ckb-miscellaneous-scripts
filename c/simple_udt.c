@@ -128,7 +128,7 @@ int main() {
     i += 1;
   }
 
-  if (input_amount != output_amount) {
+  if (input_amount < output_amount) {
     return ERROR_AMOUNT;
   }
   return CKB_SUCCESS;
