@@ -3,9 +3,9 @@
  * sequence, as long as any lock script passes, it returns a success
  * state, otherwise it returns a failure.
  */
-#include "or.h"
 #include "ckb_dlfcn.h"
 #include "ckb_syscalls.h"
+#include "or.h"
 
 #define CODE_SIZE (256 * 1024)
 #define MAX_WITNESS_SIZE 32768
