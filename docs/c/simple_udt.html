@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+
+<html>
+<head>
+  <title>Simple UDT</title>
+  <meta http-equiv="content-type" content="text/html; charset=UTF-8">
+  <meta name="viewport" content="width=device-width, target-densitydpi=160dpi, initial-scale=1.0; maximum-scale=1.0; user-scalable=0;">
+  <link rel="stylesheet" media="all" href="../docco.css" />
+</head>
+<body>
+  <div id="container">
+    <div id="background"></div>
+    
+    <ul class="sections">
+        
+        
+        
+        <li id="section-1">
+            <div class="annotation">
+              
+              <div class="pilwrap ">
+                <a class="pilcrow" href="#section-1">&#182;</a>
+              </div>
+              <h1 id="simple-udt">Simple UDT</h1>
+<p>A simple UDT script using 128 bit unsigned integer range</p>
+<p>This UDT has 2 unlocking modes:</p>
+<ol>
+<li>If one of the transaction input has a lock script matching the UDT
+script argument, the UDT script will be in owner mode. In owner mode no
+checks is performed, the owner can perform any operations such as issuing
+more UDTs or burning UDTs. By ensuring at least one transaction input has
+a matching lock script, the ownership of UDT can be ensured.</li>
+<li>Otherwise, the UDT script will be in normal mode, where it ensures the
+sum of all input tokens is not smaller than the sum of all output tokens.</li>
+</ol>
+<p>Notice one caveat of this UDT script is that only one UDT can be issued
+for each unique lock script. A more sophisticated UDT script might include
+other arguments(such as the hash of the first input) as a unique identifier,
+however for the sake of simplicity, we are happy with this limitation.</p>
+
+            </div>
+            
+        </li>
+        
+        
+        <li id="section-2">
+            <div class="annotation">
+              
+              <div class="pilwrap ">
+                <a class="pilcrow" href="#section-2">&#182;</a>
+              </div>
+              <p>First, let’s include header files used to interact with CKB.</p>
+
+            </div>
+            
+            <div class="content"><div class='highlight'><pre><span class="hljs-meta">#<span class="hljs-meta-keyword">include</span> <span class="hljs-meta-string">"blockchain.h"</span></span>
+<span class="hljs-meta">#<span class="hljs-meta-keyword">include</span> <span class="hljs-meta-string">"ckb_syscalls.h"</span></span></pre></div></div>
+            
+        </li>
+        
+        
+        <li id="section-3">
+            <div class="annotation">
+              
+              <div class="pilwrap ">
+                <a class="pilcrow" href="#section-3">&#182;</a>
+              </div>
+              <p>We are limiting the script size loaded to be 32KB at most. This should be
+more than enough. We are also using blake2b with 256-bit hash here, which is
+the same as CKB.</p>
+
+            </div>
+            
+            <div class="content"><div class='highlight'><pre><span class="hljs-meta">#<span class="hljs-meta-keyword">define</span> BLAKE2B_BLOCK_SIZE 32</span>
+<span class="hljs-meta">#<span class="hljs-meta-keyword">define</span> SCRIPT_SIZE 32768</span></pre></div></div>
+            
+        </li>
+        
+        
+        <li id="section-4">
+            <div class="annotation">
+              
+              <div class="pilwrap ">
+                <a class="pilcrow" href="#section-4">&#182;</a>
+              </div>
+              <p>Common error codes that might be returned by the script.</p>
+
+            </div>
+            
+            <div class="content"><div class='highlight'><pre><span class="hljs-meta">#<span class="hljs-meta-keyword">define</span> ERROR_ARGUMENTS_LEN -1</span>
+<span class="hljs-meta">#<span class="hljs-meta-keyword">define</span> ERROR_ENCODING -2</span>
+<span class="hljs-meta">#<span class="hljs-meta-keyword">define</span> ERROR_SYSCALL -3</span>
+<span class="hljs-meta">#<span class="hljs-meta-keyword">define</span> ERROR_SCRIPT_TOO_LONG -21</span>
+<span class="hljs-meta">#<span class="hljs-meta-keyword">define</span> ERROR_OVERFLOWING -51</span>
+<span class="hljs-meta">#<span class="hljs-meta-keyword">define</span> ERROR_AMOUNT -52</span></pre></div></div>
+            
+        </li>
+        
+        
+        <li id="section-5">
+            <div class="annotation">
+              
+              <div class="pilwrap ">
+                <a class="pilcrow" href="#section-5">&#182;</a>
+              </div>
+              <p>We will leverage gcc’s 128-bit integer extension here for number crunching.</p>
+
+            </div>
+            
+            <div class="content"><div class='highlight'><pre><span class="hljs-keyword">typedef</span> <span class="hljs-keyword">unsigned</span> __int128 <span class="hljs-keyword">uint128_t</span>;
+
+<span class="hljs-function"><span class="hljs-keyword">int</span> <span class="hljs-title">main</span><span class="hljs-params">()</span> </span>{</pre></div></div>
+            
+        </li>
+        
+        
+        <li id="section-6">
+            <div class="annotation">
+              
+              <div class="pilwrap ">
+                <a class="pilcrow" href="#section-6">&#182;</a>
+              </div>
+              <p>First, let’s load current running script, so we can extract owner lock
+script hash from script args.</p>
+
+            </div>
+            
+            <div class="content"><div class='highlight'><pre>  <span class="hljs-keyword">unsigned</span> <span class="hljs-keyword">char</span> script[SCRIPT_SIZE];
+  <span class="hljs-keyword">uint64_t</span> len = SCRIPT_SIZE;
+  <span class="hljs-keyword">int</span> ret = ckb_load_script(script, &amp;len, <span class="hljs-number">0</span>);
+  <span class="hljs-keyword">if</span> (ret != CKB_SUCCESS) {
+    <span class="hljs-keyword">return</span> ERROR_SYSCALL;
+  }
+  <span class="hljs-keyword">if</span> (len &gt; SCRIPT_SIZE) {
+    <span class="hljs-keyword">return</span> ERROR_SCRIPT_TOO_LONG;
+  }
+  <span class="hljs-keyword">mol_seg_t</span> script_seg;
+  script_seg.ptr = (<span class="hljs-keyword">uint8_t</span> *)script;
+  script_seg.size = len;
+
+  <span class="hljs-keyword">if</span> (MolReader_Script_verify(&amp;script_seg, <span class="hljs-literal">false</span>) != MOL_OK) {
+    <span class="hljs-keyword">return</span> ERROR_ENCODING;
+  }
+
+  <span class="hljs-keyword">mol_seg_t</span> args_seg = MolReader_Script_get_args(&amp;script_seg);
+  <span class="hljs-keyword">mol_seg_t</span> args_bytes_seg = MolReader_Bytes_raw_bytes(&amp;args_seg);
+  <span class="hljs-keyword">if</span> (args_bytes_seg.size != BLAKE2B_BLOCK_SIZE) {
+    <span class="hljs-keyword">return</span> ERROR_ARGUMENTS_LEN;
+  }</pre></div></div>
+            
+        </li>
+        
+        
+        <li id="section-7">
+            <div class="annotation">
+              
+              <div class="pilwrap ">
+                <a class="pilcrow" href="#section-7">&#182;</a>
+              </div>
+              <p>With owner lock script extracted, we will look through each input in the
+current transaction to see if any unlocked cell uses owner lock.</p>
+
+            </div>
+            
+            <div class="content"><div class='highlight'><pre>  <span class="hljs-keyword">int</span> owner_mode = <span class="hljs-number">0</span>;
+  <span class="hljs-keyword">size_t</span> i = <span class="hljs-number">0</span>;
+  <span class="hljs-keyword">while</span> (<span class="hljs-number">1</span>) {
+    <span class="hljs-keyword">uint8_t</span> buffer[BLAKE2B_BLOCK_SIZE];
+    <span class="hljs-keyword">uint64_t</span> len = BLAKE2B_BLOCK_SIZE;</pre></div></div>
+            
+        </li>
+        
+        
+        <li id="section-8">
+            <div class="annotation">
+              
+              <div class="pilwrap ">
+                <a class="pilcrow" href="#section-8">&#182;</a>
+              </div>
+              <p>There are 2 points worth mentioning here:</p>
+<ul>
+<li>First, we are using the checked version of CKB syscalls, the checked
+versions will return an error if our provided buffer is not enough to
+hold all returned data. This can help us ensure that we are processing
+enough data here.</li>
+<li>Second, <code>CKB_CELL_FIELD_LOCK_HASH</code> is used here to directly load the
+lock script hash, so we don’t have to manually calculate the hash again
+here.</li>
+</ul>
+
+            </div>
+            
+            <div class="content"><div class='highlight'><pre>    ret = ckb_checked_load_cell_by_field(buffer, &amp;len, <span class="hljs-number">0</span>, i, CKB_SOURCE_INPUT,
+                                         CKB_CELL_FIELD_LOCK_HASH);
+    <span class="hljs-keyword">if</span> (ret == CKB_INDEX_OUT_OF_BOUND) {
+      <span class="hljs-keyword">break</span>;
+    }
+    <span class="hljs-keyword">if</span> (ret != CKB_SUCCESS) {
+      <span class="hljs-keyword">return</span> ret;
+    }
+    <span class="hljs-keyword">if</span> (len != BLAKE2B_BLOCK_SIZE) {
+      <span class="hljs-keyword">return</span> ERROR_ENCODING;
+    }
+    <span class="hljs-keyword">if</span> (<span class="hljs-built_in">memcmp</span>(buffer, args_bytes_seg.ptr, BLAKE2B_BLOCK_SIZE) == <span class="hljs-number">0</span>) {
+      owner_mode = <span class="hljs-number">1</span>;
+      <span class="hljs-keyword">break</span>;
+    }
+    i += <span class="hljs-number">1</span>;
+  }</pre></div></div>
+            
+        </li>
+        
+        
+        <li id="section-9">
+            <div class="annotation">
+              
+              <div class="pilwrap ">
+                <a class="pilcrow" href="#section-9">&#182;</a>
+              </div>
+              <p>When owner mode is triggered, we won’t perform any checks here, the owner
+is free to make any changes here, including token issurance, minting, etc.</p>
+
+            </div>
+            
+            <div class="content"><div class='highlight'><pre>  <span class="hljs-keyword">if</span> (owner_mode) {
+    <span class="hljs-keyword">return</span> CKB_SUCCESS;
+  }</pre></div></div>
+            
+        </li>
+        
+        
+        <li id="section-10">
+            <div class="annotation">
+              
+              <div class="pilwrap ">
+                <a class="pilcrow" href="#section-10">&#182;</a>
+              </div>
+              <p>When the owner mode is not enabled, however, we will then need to ensure
+the sum of all input tokens is not smaller than the sum of all output
+tokens. First, let’s loop through all input cells containing current UDTs,
+and gather the sum of all input tokens.</p>
+
+            </div>
+            
+            <div class="content"><div class='highlight'><pre>  <span class="hljs-keyword">uint128_t</span> input_amount = <span class="hljs-number">0</span>;
+  i = <span class="hljs-number">0</span>;
+  <span class="hljs-keyword">while</span> (<span class="hljs-number">1</span>) {
+    <span class="hljs-keyword">uint128_t</span> current_amount = <span class="hljs-number">0</span>;
+    len = <span class="hljs-number">16</span>;</pre></div></div>
+            
+        </li>
+        
+        
+        <li id="section-11">
+            <div class="annotation">
+              
+              <div class="pilwrap ">
+                <a class="pilcrow" href="#section-11">&#182;</a>
+              </div>
+              <p>The implementation here does not require that the transaction only
+contains UDT cells for the current UDT type. It’s perfectly fine to mix
+the cells for multiple different types of UDT together in one
+transaction. But that also means we need a way to tell one UDT type from
+another UDT type. The trick is in the <code>CKB_SOURCE_GROUP_INPUT</code> value used
+here. When using it as the source part of the syscall, the syscall would
+only iterate through cells with the same script as the current running
+script. Since different UDT types will naturally have different
+script(the args part will be different), we can be sure here that this
+loop would only iterate through UDTs that are of the same type as the one
+identified by the current running script.</p>
+<p>In the case that multiple UDT types are included in the same transaction,
+this simple UDT script will be run multiple times to validate the
+transaction, each time with a different script containing different
+script args, representing different UDT types.</p>
+<p>A different trick used here, is that our current implementation assumes
+that the amount of UDT is stored as unsigned 128-bit little endian
+integer in the first 16 bytes of cell data. Since RISC-V also uses little
+endian format, we can just read the first 16 bytes of cell data into
+<code>current_amount</code>, which is just an unsigned 128-bit integer in C. The
+memory layout of a C program will ensure that the value is set correctly.</p>
+
+            </div>
+            
+            <div class="content"><div class='highlight'><pre>    ret = ckb_load_cell_data((<span class="hljs-keyword">uint8_t</span> *)&amp;current_amount, &amp;len, <span class="hljs-number">0</span>, i,
+                             CKB_SOURCE_GROUP_INPUT);</pre></div></div>
+            
+        </li>
+        
+        
+        <li id="section-12">
+            <div class="annotation">
+              
+              <div class="pilwrap ">
+                <a class="pilcrow" href="#section-12">&#182;</a>
+              </div>
+              <p>When <code>CKB_INDEX_OUT_OF_BOUND</code> is reached, we know we have iterated
+through all cells of current type.</p>
+
+            </div>
+            
+            <div class="content"><div class='highlight'><pre>    <span class="hljs-keyword">if</span> (ret == CKB_INDEX_OUT_OF_BOUND) {
+      <span class="hljs-keyword">break</span>;
+    }
+    <span class="hljs-keyword">if</span> (ret != CKB_SUCCESS) {
+      <span class="hljs-keyword">return</span> ret;
+    }
+    <span class="hljs-keyword">if</span> (len != <span class="hljs-number">16</span>) {
+      <span class="hljs-keyword">return</span> ERROR_ENCODING;
+    }
+    input_amount += current_amount;</pre></div></div>
+            
+        </li>
+        
+        
+        <li id="section-13">
+            <div class="annotation">
+              
+              <div class="pilwrap ">
+                <a class="pilcrow" href="#section-13">&#182;</a>
+              </div>
+              <p>Like any serious smart contract out there, we will need to check for
+overflows.</p>
+
+            </div>
+            
+            <div class="content"><div class='highlight'><pre>    <span class="hljs-keyword">if</span> (input_amount &lt; current_amount) {
+      <span class="hljs-keyword">return</span> ERROR_OVERFLOWING;
+    }
+    i += <span class="hljs-number">1</span>;
+  }</pre></div></div>
+            
+        </li>
+        
+        
+        <li id="section-14">
+            <div class="annotation">
+              
+              <div class="pilwrap ">
+                <a class="pilcrow" href="#section-14">&#182;</a>
+              </div>
+              <p>With the sum of all input UDT tokens gathered, let’s now iterate through
+output cells to grab the sum of all output UDT tokens.</p>
+
+            </div>
+            
+            <div class="content"><div class='highlight'><pre>  <span class="hljs-keyword">uint128_t</span> output_amount = <span class="hljs-number">0</span>;
+  i = <span class="hljs-number">0</span>;
+  <span class="hljs-keyword">while</span> (<span class="hljs-number">1</span>) {
+    <span class="hljs-keyword">uint128_t</span> current_amount = <span class="hljs-number">0</span>;
+    len = <span class="hljs-number">16</span>;</pre></div></div>
+            
+        </li>
+        
+        
+        <li id="section-15">
+            <div class="annotation">
+              
+              <div class="pilwrap ">
+                <a class="pilcrow" href="#section-15">&#182;</a>
+              </div>
+              <p>Similar to the above code piece, we are also looping through output cells
+with the same script as current running script here by using
+<code>CKB_SOURCE_GROUP_OUTPUT</code>.</p>
+
+            </div>
+            
+            <div class="content"><div class='highlight'><pre>    ret = ckb_load_cell_data((<span class="hljs-keyword">uint8_t</span> *)&amp;current_amount, &amp;len, <span class="hljs-number">0</span>, i,
+                             CKB_SOURCE_GROUP_OUTPUT);
+    <span class="hljs-keyword">if</span> (ret == CKB_INDEX_OUT_OF_BOUND) {
+      <span class="hljs-keyword">break</span>;
+    }
+    <span class="hljs-keyword">if</span> (ret != CKB_SUCCESS) {
+      <span class="hljs-keyword">return</span> ret;
+    }
+    <span class="hljs-keyword">if</span> (len != <span class="hljs-number">16</span>) {
+      <span class="hljs-keyword">return</span> ERROR_ENCODING;
+    }
+    output_amount += current_amount;</pre></div></div>
+            
+        </li>
+        
+        
+        <li id="section-16">
+            <div class="annotation">
+              
+              <div class="pilwrap ">
+                <a class="pilcrow" href="#section-16">&#182;</a>
+              </div>
+              <p>Like any serious smart contract out there, we will need to check for
+overflows.</p>
+
+            </div>
+            
+            <div class="content"><div class='highlight'><pre>    <span class="hljs-keyword">if</span> (output_amount &lt; current_amount) {
+      <span class="hljs-keyword">return</span> ERROR_OVERFLOWING;
+    }
+    i += <span class="hljs-number">1</span>;
+  }</pre></div></div>
+            
+        </li>
+        
+        
+        <li id="section-17">
+            <div class="annotation">
+              
+              <div class="pilwrap ">
+                <a class="pilcrow" href="#section-17">&#182;</a>
+              </div>
+              <p>When both value are gathered, we can perform the final check here to
+prevent non-authorized token issurance.</p>
+
+            </div>
+            
+            <div class="content"><div class='highlight'><pre>  <span class="hljs-keyword">if</span> (input_amount &lt; output_amount) {
+    <span class="hljs-keyword">return</span> ERROR_AMOUNT;
+  }
+  <span class="hljs-keyword">return</span> CKB_SUCCESS;
+}</pre></div></div>
+            
+        </li>
+        
+    </ul>
+  </div>
+</body>
+</html>
