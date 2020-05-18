@@ -1,3 +1,17 @@
+// # secp256k1-blake160-sighash-all-dual
+//
+// This is the same lock script code as the system
+// [secp256k1-blake160-sighash-all](https://github.com/nervosnetwork/ckb-system-scripts/blob/9c1fca3246903adbb5c516f16404212c03dd3a01/c/secp256k1_blake160_sighash_all.c)
+// with one additional feature: it can be executed as a standalone lock
+// script. At the same time, it can also be included as a library via dynamic
+// linking techniques. This enables us to share the secp256k1 logic between many
+// on chain smart contracts.
+//
+// As a result, we will only document the newly affected features. Please refer
+// to the original script for how the signature verification logic works.
+
+// One noticable addition here, is that we are including `ckb_dlfcn.h` library.
+// This provides dynamic linking related features.
 #include "blake2b.h"
 #include "blockchain.h"
 #include "ckb_dlfcn.h"
@@ -27,7 +41,7 @@
 #define ERROR_WITNESS_SIZE -22
 #define ERROR_PUBKEY_BLAKE160_HASH -31
 
-/* Extract lock from WitnessArgs */
+// Extract lock from WitnessArgs
 int extract_witness_lock(uint8_t *witness, uint64_t len,
                          mol_seg_t *lock_bytes_seg) {
   mol_seg_t witness_seg;
@@ -46,13 +60,22 @@ int extract_witness_lock(uint8_t *witness, uint64_t len,
   return CKB_SUCCESS;
 }
 
+// Given a blake160 format public key hash, this method performs signature
+// verifications on input cells using current lock script hash. It then asserts
+// that the derive public key hash from the signature matches the given public
+// key hash.
+//
+// Note that this method is exposed for dynamic linking usage, so the
+// "current lock script" mentioned above, does not have to be this current
+// script code. It could be a different script code using this script via as a
+// library.
 __attribute__((visibility("default"))) int
 validate_secp256k1_blake2b_sighash_all(uint8_t *output_public_key_hash) {
   unsigned char temp[TEMP_SIZE];
   unsigned char lock_bytes[SIGNATURE_SIZE];
   uint64_t len = 0;
 
-  /* Load witness of first input */
+  // Load witness of first input
   uint64_t witness_len = MAX_WITNESS_SIZE;
   int ret = ckb_load_witness(temp, &witness_len, 0, 0, CKB_SOURCE_GROUP_INPUT);
   if (ret != CKB_SUCCESS) {
@@ -63,7 +86,7 @@ validate_secp256k1_blake2b_sighash_all(uint8_t *output_public_key_hash) {
     return ERROR_WITNESS_SIZE;
   }
 
-  /* load signature */
+  // load signature
   mol_seg_t lock_bytes_seg;
   ret = extract_witness_lock(temp, witness_len, &lock_bytes_seg);
   if (ret != 0) {
@@ -75,7 +98,7 @@ validate_secp256k1_blake2b_sighash_all(uint8_t *output_public_key_hash) {
   }
   memcpy(lock_bytes, lock_bytes_seg.ptr, lock_bytes_seg.size);
 
-  /* Load tx hash */
+  // Load tx hash
   unsigned char tx_hash[BLAKE2B_BLOCK_SIZE];
   len = BLAKE2B_BLOCK_SIZE;
   ret = ckb_load_tx_hash(tx_hash, &len, 0);
@@ -86,18 +109,18 @@ validate_secp256k1_blake2b_sighash_all(uint8_t *output_public_key_hash) {
     return ERROR_SYSCALL;
   }
 
-  /* Prepare sign message */
+  // Prepare sign message
   unsigned char message[BLAKE2B_BLOCK_SIZE];
   blake2b_state blake2b_ctx;
   blake2b_init(&blake2b_ctx, BLAKE2B_BLOCK_SIZE);
   blake2b_update(&blake2b_ctx, tx_hash, BLAKE2B_BLOCK_SIZE);
 
-  /* Clear lock field to zero, then digest the first witness */
+  // Clear lock field to zero, then digest the first witness
   memset((void *)lock_bytes_seg.ptr, 0, lock_bytes_seg.size);
   blake2b_update(&blake2b_ctx, (char *)&witness_len, sizeof(uint64_t));
   blake2b_update(&blake2b_ctx, temp, witness_len);
 
-  /* Digest same group witnesses */
+  // Digest same group witnesses
   size_t i = 1;
   while (1) {
     len = MAX_WITNESS_SIZE;
@@ -115,7 +138,7 @@ validate_secp256k1_blake2b_sighash_all(uint8_t *output_public_key_hash) {
     blake2b_update(&blake2b_ctx, temp, len);
     i += 1;
   }
-  /* Digest witnesses that not covered by inputs */
+  // Digest witnesses that not covered by inputs
   i = ckb_calculate_inputs_len();
   while (1) {
     len = MAX_WITNESS_SIZE;
@@ -135,7 +158,7 @@ validate_secp256k1_blake2b_sighash_all(uint8_t *output_public_key_hash) {
   }
   blake2b_final(&blake2b_ctx, message, BLAKE2B_BLOCK_SIZE);
 
-  /* Load signature */
+  // Load signature
   secp256k1_context context;
   uint8_t secp_data[CKB_SECP256K1_DATA_SIZE];
   ret = ckb_secp256k1_custom_verify_only_initialize(&context, secp_data);
@@ -149,13 +172,13 @@ validate_secp256k1_blake2b_sighash_all(uint8_t *output_public_key_hash) {
     return ERROR_SECP_PARSE_SIGNATURE;
   }
 
-  /* Recover pubkey */
+  // Recover pubkey
   secp256k1_pubkey pubkey;
   if (secp256k1_ecdsa_recover(&context, &pubkey, &signature, message) != 1) {
     return ERROR_SECP_RECOVER_PUBKEY;
   }
 
-  /* Check pubkey hash */
+  // Check pubkey hash
   size_t pubkey_size = PUBKEY_SIZE;
   if (secp256k1_ec_pubkey_serialize(&context, temp, &pubkey_size, &pubkey,
                                     SECP256K1_EC_COMPRESSED) != 1) {
@@ -171,11 +194,21 @@ validate_secp256k1_blake2b_sighash_all(uint8_t *output_public_key_hash) {
   return CKB_SUCCESS;
 }
 
+// This replicates the same validation logic as the system
+// secp256k1-blake160-sighash-all script. It loads public key hash from the
+// witness of the same index as the first input using current lock script.
+// Then using this public key hash, we are doing signature verification on input
+// cells using current lock script.
+//
+// Note that this method is exposed for dynamic linking usage, so the
+// "current lock script" mentioned above, does not have to be this current
+// script code. It could be a different script code using this script via as a
+// library.
 __attribute__((visibility("default"))) int validate_simple() {
   int ret;
   uint64_t len = 0;
 
-  /* Load args */
+  // Load args
   unsigned char script[SCRIPT_SIZE];
   len = SCRIPT_SIZE;
   ret = ckb_load_script(script, &len, 0);
@@ -220,13 +253,12 @@ typedef struct {
   uint64_t value;
 } Elf64_Dynamic;
 
+// A simply inlined program interpreter. This works when the lock script is
+// used as an executable on its own.
+//
+// Assuming ELF header lives at 0x0, also avoiding deferencing
+// NULL pointer.
 int main() {
-  /*
-   * A simply inlined program interpreter.
-   *
-   * Assuming ELF header lives at 0x0, also avoiding deferencing
-   * NULL pointer.
-   */
   uint64_t *phoff = (uint64_t *)OFFSETOF(Elf64_Ehdr, e_phoff);
   uint16_t *phnum = (uint16_t *)OFFSETOF(Elf64_Ehdr, e_phnum);
   Elf64_Phdr *program_headers = (Elf64_Phdr *)(*phoff);
