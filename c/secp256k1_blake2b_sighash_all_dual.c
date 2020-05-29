@@ -40,6 +40,10 @@
 #define ERROR_SCRIPT_TOO_LONG -21
 #define ERROR_WITNESS_SIZE -22
 #define ERROR_PUBKEY_BLAKE160_HASH -31
+#define ERROR_INVALID_PREFILLED_DATA_SIZE -41
+#define ERROR_INVALID_SIGNATURE_SIZE -42
+#define ERROR_INVALID_MESSAGE_SIZE -43
+#define ERROR_INVALID_OUTPUT_SIZE -44
 
 // Extract lock from WitnessArgs
 int extract_witness_lock(uint8_t *witness, uint64_t len,
@@ -57,6 +61,60 @@ int extract_witness_lock(uint8_t *witness, uint64_t len,
     return ERROR_ENCODING;
   }
   *lock_bytes_seg = MolReader_Bytes_raw_bytes(&lock_seg);
+  return CKB_SUCCESS;
+}
+
+__attribute__((visibility("default"))) int load_prefilled_data(void *data,
+                                                               size_t *len) {
+  if ((*len) < CKB_SECP256K1_DATA_SIZE) {
+    *len = CKB_SECP256K1_DATA_SIZE;
+    return ERROR_INVALID_PREFILLED_DATA_SIZE;
+  }
+  int ret = ckb_secp256k1_custom_load_data(data);
+  if (ret != CKB_SUCCESS) {
+    return ret;
+  }
+  *len = CKB_SECP256K1_DATA_SIZE;
+  return CKB_SUCCESS;
+}
+
+__attribute__((visibility("default"))) int validate_signature(
+    void *prefilled_data, const uint8_t *signature_buffer,
+    size_t signature_size, const uint8_t *message_buffer, size_t message_size,
+    uint8_t *output, size_t *output_len) {
+  if (signature_size != SIGNATURE_SIZE) {
+    return ERROR_INVALID_SIGNATURE_SIZE;
+  }
+  if (message_size != 32) {
+    return ERROR_INVALID_MESSAGE_SIZE;
+  }
+  if (*output_len < PUBKEY_SIZE) {
+    return ERROR_INVALID_OUTPUT_SIZE;
+  }
+  secp256k1_context context;
+  int ret =
+      ckb_secp256k1_custom_verify_only_initialize(&context, prefilled_data);
+  if (ret != 0) {
+    return ret;
+  }
+
+  secp256k1_ecdsa_recoverable_signature signature;
+  if (secp256k1_ecdsa_recoverable_signature_parse_compact(
+          &context, &signature, signature_buffer,
+          signature_buffer[RECID_INDEX]) == 0) {
+    return ERROR_SECP_PARSE_SIGNATURE;
+  }
+
+  secp256k1_pubkey pubkey;
+  if (secp256k1_ecdsa_recover(&context, &pubkey, &signature, message_buffer) !=
+      1) {
+    return ERROR_SECP_RECOVER_PUBKEY;
+  }
+
+  if (secp256k1_ec_pubkey_serialize(&context, output, output_len, &pubkey,
+                                    SECP256K1_EC_COMPRESSED) != 1) {
+    return ERROR_SECP_SERIALIZE_PUBKEY;
+  }
   return CKB_SUCCESS;
 }
 
@@ -161,6 +219,10 @@ validate_secp256k1_blake2b_sighash_all(uint8_t *output_public_key_hash) {
   // Load signature
   secp256k1_context context;
   uint8_t secp_data[CKB_SECP256K1_DATA_SIZE];
+  ret = ckb_secp256k1_custom_load_data(secp_data);
+  if (ret != 0) {
+    return ret;
+  }
   ret = ckb_secp256k1_custom_verify_only_initialize(&context, secp_data);
   if (ret != 0) {
     return ret;

@@ -29,12 +29,7 @@ void secp256k1_default_error_callback_fn(const char* str, void* data) {
   ckb_exit(CKB_SECP256K1_HELPER_ERROR_ERROR_CALLBACK);
 }
 
-/*
- * data should at least be CKB_SECP256K1_DATA_SIZE big
- * so as to hold all loaded data.
- */
-int ckb_secp256k1_custom_verify_only_initialize(secp256k1_context* context,
-                                                void* data) {
+int ckb_secp256k1_custom_load_data(void* data) {
   size_t index = SIZE_MAX;
   int ret = ckb_look_for_dep_with_hash(ckb_secp256k1_data_hash, &index);
   if (ret != CKB_SUCCESS) {
@@ -46,15 +41,23 @@ int ckb_secp256k1_custom_verify_only_initialize(secp256k1_context* context,
   if (ret != CKB_SUCCESS || len != CKB_SECP256K1_DATA_SIZE) {
     return CKB_SECP256K1_HELPER_ERROR_LOADING_DATA;
   }
+  return CKB_SUCCESS;
+}
 
+/*
+ * data should at least be CKB_SECP256K1_DATA_SIZE big
+ * so as to hold all loaded data.
+ */
+int ckb_secp256k1_custom_verify_only_initialize(secp256k1_context* context,
+                                                void* loaded_data) {
   context->illegal_callback = default_illegal_callback;
   context->error_callback = default_error_callback;
 
   secp256k1_ecmult_context_init(&context->ecmult_ctx);
   secp256k1_ecmult_gen_context_init(&context->ecmult_gen_ctx);
 
-  /* Recasting data to (uint8_t*) for pointer math */
-  uint8_t* p = data;
+  /* Recasting loaded_data to (uint8_t*) for pointer math */
+  uint8_t* p = loaded_data;
   secp256k1_ge_storage(*pre_g)[] = (secp256k1_ge_storage(*)[])p;
   secp256k1_ge_storage(*pre_g_128)[] =
       (secp256k1_ge_storage(*)[])(&p[CKB_SECP256K1_DATA_PRE_SIZE]);

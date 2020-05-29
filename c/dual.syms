@@ -1,4 +1,6 @@
 {
+  load_prefilled_data;
+  validate_signature;
   validate_secp256k1_blake2b_sighash_all;
   validate_simple;
 };
