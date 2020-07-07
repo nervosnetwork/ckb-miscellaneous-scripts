@@ -1,0 +1,642 @@
+<!DOCTYPE html>
+
+<html>
+<head>
+  <title>Open Transaction</title>
+  <meta http-equiv="content-type" content="text/html; charset=UTF-8">
+  <meta name="viewport" content="width=device-width, target-densitydpi=160dpi, initial-scale=1.0; maximum-scale=1.0; user-scalable=0;">
+  <link rel="stylesheet" media="all" href="../docco.css" />
+</head>
+<body>
+  <div id="container">
+    <div id="background"></div>
+    
+      <ul id="jump_to">
+        <li>
+          <a class="large" href="javascript:void(0);">Jump To &hellip;</a>
+          <a class="small" href="javascript:void(0);">+</a>
+          <div id="jump_wrapper">
+          <div id="jump_page_wrapper">
+            <div id="jump_page">
+              
+                
+                <a class="source" href="open_transaction.html">
+                  c/open_transaction.c
+                </a>
+              
+                
+                <a class="source" href="secp256k1_blake2b_sighash_all_dual.html">
+                  c/secp256k1_blake2b_sighash_all_dual.c
+                </a>
+              
+                
+                <a class="source" href="simple_udt.html">
+                  c/simple_udt.c
+                </a>
+              
+            </div>
+          </div>
+        </li>
+      </ul>
+    
+    <ul class="sections">
+        
+        
+        
+        <li id="section-1">
+            <div class="annotation">
+              
+              <div class="pilwrap ">
+                <a class="pilcrow" href="#section-1">&#182;</a>
+              </div>
+              <h1 id="open-transaction">Open Transaction</h1>
+<p>An open transaction implementation. Right now it is tied to
+secp256k1-blake160 signature verification algorithm. Later we might
+change it for more use cases.</p>
+
+            </div>
+            
+            <div class="content"><div class='highlight'><pre><span class="hljs-meta">#<span class="hljs-meta-keyword">include</span> <span class="hljs-meta-string">"blake2b.h"</span></span>
+<span class="hljs-meta">#<span class="hljs-meta-keyword">include</span> <span class="hljs-meta-string">"blockchain.h"</span></span>
+<span class="hljs-meta">#<span class="hljs-meta-keyword">include</span> <span class="hljs-meta-string">"ckb_syscalls.h"</span></span>
+<span class="hljs-meta">#<span class="hljs-meta-keyword">include</span> <span class="hljs-meta-string">"ckb_utils.h"</span></span>
+<span class="hljs-meta">#<span class="hljs-meta-keyword">include</span> <span class="hljs-meta-string">"secp256k1_helper.h"</span></span>
+
+<span class="hljs-meta">#<span class="hljs-meta-keyword">define</span> BLAKE2B_BLOCK_SIZE 32</span>
+<span class="hljs-meta">#<span class="hljs-meta-keyword">define</span> BLAKE160_SIZE 20</span>
+<span class="hljs-meta">#<span class="hljs-meta-keyword">define</span> PUBKEY_SIZE 33</span>
+<span class="hljs-meta">#<span class="hljs-meta-keyword">define</span> RECID_INDEX 64</span>
+<span class="hljs-meta">#<span class="hljs-meta-keyword">define</span> SIGNATURE_SIZE 65</span>
+<span class="hljs-comment">/* 32 KB */</span>
+<span class="hljs-meta">#<span class="hljs-meta-keyword">define</span> WITNESS_SIZE 32768</span>
+<span class="hljs-meta">#<span class="hljs-meta-keyword">define</span> SCRIPT_SIZE 32768</span>
+<span class="hljs-meta">#<span class="hljs-meta-keyword">define</span> ONE_BATCH_SIZE 4096</span>
+
+<span class="hljs-meta">#<span class="hljs-meta-keyword">define</span> ERROR_ARGUMENTS_LEN -1</span>
+<span class="hljs-meta">#<span class="hljs-meta-keyword">define</span> ERROR_ENCODING -2</span>
+<span class="hljs-meta">#<span class="hljs-meta-keyword">define</span> ERROR_SYSCALL -3</span>
+<span class="hljs-meta">#<span class="hljs-meta-keyword">define</span> ERROR_SECP_RECOVER_PUBKEY -11</span>
+<span class="hljs-meta">#<span class="hljs-meta-keyword">define</span> ERROR_SECP_VERIFICATION -12</span>
+<span class="hljs-meta">#<span class="hljs-meta-keyword">define</span> ERROR_SECP_PARSE_PUBKEY -13</span>
+<span class="hljs-meta">#<span class="hljs-meta-keyword">define</span> ERROR_SECP_PARSE_SIGNATURE -14</span>
+<span class="hljs-meta">#<span class="hljs-meta-keyword">define</span> ERROR_SECP_SERIALIZE_PUBKEY -15</span>
+<span class="hljs-meta">#<span class="hljs-meta-keyword">define</span> ERROR_SCRIPT_TOO_LONG -21</span>
+<span class="hljs-meta">#<span class="hljs-meta-keyword">define</span> ERROR_WITNESS_SIZE -22</span>
+<span class="hljs-meta">#<span class="hljs-meta-keyword">define</span> ERROR_PUBKEY_BLAKE160_HASH -31</span>
+<span class="hljs-meta">#<span class="hljs-meta-keyword">define</span> ERROR_INVALID_PREFILLED_DATA_SIZE -41</span>
+<span class="hljs-meta">#<span class="hljs-meta-keyword">define</span> ERROR_INVALID_SIGNATURE_SIZE -42</span>
+<span class="hljs-meta">#<span class="hljs-meta-keyword">define</span> ERROR_INVALID_MESSAGE_SIZE -43</span>
+<span class="hljs-meta">#<span class="hljs-meta-keyword">define</span> ERROR_INVALID_OUTPUT_SIZE -44</span>
+<span class="hljs-meta">#<span class="hljs-meta-keyword">define</span> ERROR_INVALID_LABEL -50</span>
+<span class="hljs-meta">#<span class="hljs-meta-keyword">define</span> ERROR_INVALID_MASK -51</span>
+
+<span class="hljs-meta">#<span class="hljs-meta-keyword">define</span> LABEL_SIGHASH_ALL 0x0</span>
+<span class="hljs-meta">#<span class="hljs-meta-keyword">define</span> LABEL_END_OF_LIST 0xF</span>
+<span class="hljs-meta">#<span class="hljs-meta-keyword">define</span> LABEL_OUTPUT 0x1</span>
+<span class="hljs-meta">#<span class="hljs-meta-keyword">define</span> LABEL_INPUT_CELL 0x2</span>
+<span class="hljs-meta">#<span class="hljs-meta-keyword">define</span> LABEL_INPUT_CELL_SINCE 0x3</span>
+<span class="hljs-meta">#<span class="hljs-meta-keyword">define</span> LABEL_INPUT_OUTPOINT 0x4</span>
+
+<span class="hljs-meta">#<span class="hljs-meta-keyword">define</span> MASK_CELL_CAPACITY 0x0</span>
+<span class="hljs-meta">#<span class="hljs-meta-keyword">define</span> MASK_CELL_TYPE_CODE_HASH 0x1</span>
+<span class="hljs-meta">#<span class="hljs-meta-keyword">define</span> MASK_CELL_TYPE_ARGS 0x2</span>
+<span class="hljs-meta">#<span class="hljs-meta-keyword">define</span> MASK_CELL_TYPE_HASH_TYPE 0x3</span>
+<span class="hljs-meta">#<span class="hljs-meta-keyword">define</span> MASK_CELL_LOCK_CODE_HASH 0x4</span>
+<span class="hljs-meta">#<span class="hljs-meta-keyword">define</span> MASK_CELL_LOCK_ARGS 0x5</span>
+<span class="hljs-meta">#<span class="hljs-meta-keyword">define</span> MASK_CELL_LOCK_HASH_TYPE 0x6</span>
+<span class="hljs-meta">#<span class="hljs-meta-keyword">define</span> MASK_CELL_DATA 0x7</span>
+
+<span class="hljs-meta">#<span class="hljs-meta-keyword">define</span> MASK_OUTPOINT_TX_HASH 0x0</span>
+<span class="hljs-meta">#<span class="hljs-meta-keyword">define</span> MASK_OUTPOINT_INDEX 0x1</span>
+<span class="hljs-meta">#<span class="hljs-meta-keyword">define</span> MASK_OUTPOINT_SINCE 0x2</span>
+<span class="hljs-meta">#<span class="hljs-meta-keyword">define</span> MASK_OUTPOINT_ALL 0x3</span></pre></div></div>
+            
+        </li>
+        
+        
+        <li id="section-2">
+            <div class="annotation">
+              
+              <div class="pilwrap ">
+                <a class="pilcrow" href="#section-2">&#182;</a>
+              </div>
+              <p>Extract lock from WitnessArgs</p>
+
+            </div>
+            
+            <div class="content"><div class='highlight'><pre><span class="hljs-function"><span class="hljs-keyword">int</span> <span class="hljs-title">extract_witness_lock</span><span class="hljs-params">(<span class="hljs-keyword">uint8_t</span> *witness, <span class="hljs-keyword">uint64_t</span> len,
+                         <span class="hljs-keyword">mol_seg_t</span> *lock_bytes_seg)</span> </span>{
+  <span class="hljs-keyword">mol_seg_t</span> witness_seg;
+  witness_seg.ptr = witness;
+  witness_seg.size = len;
+
+  <span class="hljs-keyword">if</span> (MolReader_WitnessArgs_verify(&amp;witness_seg, <span class="hljs-literal">false</span>) != MOL_OK) {
+    <span class="hljs-keyword">return</span> ERROR_ENCODING;
+  }
+  <span class="hljs-keyword">mol_seg_t</span> lock_seg = MolReader_WitnessArgs_get_lock(&amp;witness_seg);
+
+  <span class="hljs-keyword">if</span> (MolReader_BytesOpt_is_none(&amp;lock_seg)) {
+    <span class="hljs-keyword">return</span> ERROR_ENCODING;
+  }
+  *lock_bytes_seg = MolReader_Bytes_raw_bytes(&amp;lock_seg);
+  <span class="hljs-keyword">return</span> CKB_SUCCESS;
+}
+
+<span class="hljs-function"><span class="hljs-keyword">int</span> <span class="hljs-title">main</span><span class="hljs-params">()</span> </span>{
+  <span class="hljs-keyword">unsigned</span> <span class="hljs-keyword">char</span> witness[WITNESS_SIZE];</pre></div></div>
+            
+        </li>
+        
+        
+        <li id="section-3">
+            <div class="annotation">
+              
+              <div class="pilwrap ">
+                <a class="pilcrow" href="#section-3">&#182;</a>
+              </div>
+              <p>Load witness of first input</p>
+
+            </div>
+            
+            <div class="content"><div class='highlight'><pre>  <span class="hljs-keyword">uint64_t</span> witness_len = WITNESS_SIZE;
+  <span class="hljs-keyword">int</span> ret =
+      ckb_load_witness(witness, &amp;witness_len, <span class="hljs-number">0</span>, <span class="hljs-number">0</span>, CKB_SOURCE_GROUP_INPUT);
+  <span class="hljs-keyword">if</span> (ret != CKB_SUCCESS) {
+    <span class="hljs-keyword">return</span> ERROR_SYSCALL;
+  }
+  <span class="hljs-keyword">if</span> (witness_len &gt; WITNESS_SIZE) {
+    <span class="hljs-keyword">return</span> ERROR_WITNESS_SIZE;
+  }</pre></div></div>
+            
+        </li>
+        
+        
+        <li id="section-4">
+            <div class="annotation">
+              
+              <div class="pilwrap ">
+                <a class="pilcrow" href="#section-4">&#182;</a>
+              </div>
+              <p>Parse and process sighash coverage array</p>
+
+            </div>
+            
+            <div class="content"><div class='highlight'><pre>  <span class="hljs-keyword">mol_seg_t</span> lock_bytes_seg;
+  ret = extract_witness_lock(witness, witness_len, &amp;lock_bytes_seg);
+  <span class="hljs-keyword">if</span> (ret != <span class="hljs-number">0</span>) {
+    <span class="hljs-keyword">return</span> ERROR_ENCODING;
+  }</pre></div></div>
+            
+        </li>
+        
+        
+        <li id="section-5">
+            <div class="annotation">
+              
+              <div class="pilwrap ">
+                <a class="pilcrow" href="#section-5">&#182;</a>
+              </div>
+              <p>Open transaction witness should at least have a signature, and a sighash
+coverage array that contains at least one item.</p>
+
+            </div>
+            
+            <div class="content"><div class='highlight'><pre>  <span class="hljs-keyword">if</span> (lock_bytes_seg.size &lt;= SIGNATURE_SIZE) {
+    <span class="hljs-keyword">return</span> ERROR_ARGUMENTS_LEN;
+  }
+  <span class="hljs-keyword">size_t</span> sighash_array_length = lock_bytes_seg.size - SIGNATURE_SIZE;
+  <span class="hljs-keyword">if</span> (sighash_array_length % <span class="hljs-number">3</span> != <span class="hljs-number">0</span>) {
+    <span class="hljs-keyword">return</span> ERROR_ARGUMENTS_LEN;
+  }</pre></div></div>
+            
+        </li>
+        
+        
+        <li id="section-6">
+            <div class="annotation">
+              
+              <div class="pilwrap ">
+                <a class="pilcrow" href="#section-6">&#182;</a>
+              </div>
+              <p>Process sighash coverage array</p>
+
+            </div>
+            
+            <div class="content"><div class='highlight'><pre>  blake2b_state blake2b_ctx;
+  blake2b_init(&amp;blake2b_ctx, BLAKE2B_BLOCK_SIZE);
+  <span class="hljs-keyword">uint8_t</span> *sighash_array = (<span class="hljs-keyword">uint8_t</span> *)lock_bytes_seg.ptr;
+
+  <span class="hljs-keyword">for</span> (<span class="hljs-keyword">size_t</span> i = <span class="hljs-number">0</span>; i &lt; sighash_array_length / <span class="hljs-number">3</span>; i++) {
+    <span class="hljs-keyword">uint8_t</span> *tx_component = &amp;sighash_array[i * <span class="hljs-number">3</span>];
+    <span class="hljs-keyword">uint8_t</span> label = tx_component[<span class="hljs-number">0</span>] &gt;&gt; <span class="hljs-number">4</span>;
+    <span class="hljs-keyword">uint16_t</span> index_code =
+        (((<span class="hljs-keyword">uint16_t</span>)(tx_component[<span class="hljs-number">0</span>] &amp; <span class="hljs-number">0xF</span>)) &lt;&lt; <span class="hljs-number">8</span>) | tx_component[<span class="hljs-number">1</span>];
+    <span class="hljs-keyword">uint8_t</span> mask = tx_component[<span class="hljs-number">2</span>];</pre></div></div>
+            
+        </li>
+        
+        
+        <li id="section-7">
+            <div class="annotation">
+              
+              <div class="pilwrap ">
+                <a class="pilcrow" href="#section-7">&#182;</a>
+              </div>
+              <p>The last item must be 0xF, which is end of list.</p>
+
+            </div>
+            
+            <div class="content"><div class='highlight'><pre>    <span class="hljs-keyword">if</span> (i == sighash_array_length / <span class="hljs-number">3</span> - <span class="hljs-number">1</span>) {
+      <span class="hljs-keyword">if</span> (label != LABEL_END_OF_LIST) {
+        <span class="hljs-keyword">return</span> ERROR_INVALID_LABEL;
+      }
+    }
+
+    <span class="hljs-keyword">switch</span> (label) {
+      <span class="hljs-keyword">case</span> LABEL_SIGHASH_ALL: {
+        <span class="hljs-keyword">unsigned</span> <span class="hljs-keyword">char</span> tx_hash[BLAKE2B_BLOCK_SIZE];
+        <span class="hljs-keyword">uint64_t</span> len = BLAKE2B_BLOCK_SIZE;
+        ret = ckb_load_tx_hash(tx_hash, &amp;len, <span class="hljs-number">0</span>);
+        <span class="hljs-keyword">if</span> (ret != CKB_SUCCESS) {
+          <span class="hljs-keyword">return</span> ret;
+        }
+        <span class="hljs-keyword">if</span> (len != BLAKE2B_BLOCK_SIZE) {
+          <span class="hljs-keyword">return</span> ERROR_SYSCALL;
+        }
+        blake2b_update(&amp;blake2b_ctx, tx_hash, BLAKE2B_BLOCK_SIZE);
+      } <span class="hljs-keyword">break</span>;
+      <span class="hljs-keyword">case</span> LABEL_OUTPUT:
+      <span class="hljs-keyword">case</span> LABEL_INPUT_CELL:
+      <span class="hljs-keyword">case</span> LABEL_INPUT_CELL_SINCE: {
+        <span class="hljs-keyword">size_t</span> source =
+            (label == LABEL_OUTPUT) ? CKB_SOURCE_OUTPUT : CKB_SOURCE_INPUT;
+        <span class="hljs-keyword">size_t</span> field;
+        <span class="hljs-keyword">uint8_t</span> item;
+        <span class="hljs-keyword">switch</span> (mask) {
+          <span class="hljs-keyword">case</span> MASK_CELL_CAPACITY: {
+            <span class="hljs-keyword">uint64_t</span> capacity = <span class="hljs-number">0</span>;
+            <span class="hljs-keyword">uint64_t</span> len = <span class="hljs-number">8</span>;
+            <span class="hljs-keyword">int</span> ret = ckb_load_cell_by_field((<span class="hljs-keyword">uint8_t</span> *)(&amp;capacity), &amp;len, <span class="hljs-number">0</span>,
+                                             index_code, source,
+                                             CKB_CELL_FIELD_CAPACITY);
+            <span class="hljs-keyword">if</span> (ret != CKB_SUCCESS) {
+              <span class="hljs-keyword">return</span> ret;
+            }
+            blake2b_update(&amp;blake2b_ctx, (<span class="hljs-keyword">uint8_t</span> *)(&amp;capacity), <span class="hljs-number">8</span>);
+          } <span class="hljs-keyword">break</span>;
+          <span class="hljs-keyword">case</span> MASK_CELL_LOCK_CODE_HASH:
+          <span class="hljs-keyword">case</span> MASK_CELL_LOCK_ARGS:
+          <span class="hljs-keyword">case</span> MASK_CELL_LOCK_HASH_TYPE:
+            field = CKB_CELL_FIELD_LOCK;
+            item = mask;
+            <span class="hljs-keyword">goto</span> PROCESS_SCRIPT;
+          <span class="hljs-keyword">case</span> MASK_CELL_TYPE_CODE_HASH:
+            field = CKB_CELL_FIELD_TYPE;
+            item = MASK_CELL_LOCK_CODE_HASH;
+            <span class="hljs-keyword">goto</span> PROCESS_SCRIPT;
+          <span class="hljs-keyword">case</span> MASK_CELL_TYPE_ARGS:
+            field = CKB_CELL_FIELD_TYPE;
+            item = MASK_CELL_LOCK_ARGS;
+            <span class="hljs-keyword">goto</span> PROCESS_SCRIPT;
+          <span class="hljs-keyword">case</span> MASK_CELL_TYPE_HASH_TYPE:
+            field = CKB_CELL_FIELD_TYPE;
+            item = MASK_CELL_LOCK_HASH_TYPE;
+          PROCESS_SCRIPT : {
+            <span class="hljs-keyword">unsigned</span> <span class="hljs-keyword">char</span> script[SCRIPT_SIZE];
+            <span class="hljs-keyword">uint64_t</span> len = SCRIPT_SIZE;
+            <span class="hljs-keyword">int</span> ret = ckb_checked_load_cell_by_field(script, &amp;len, <span class="hljs-number">0</span>,
+                                                     index_code, source, field);
+            <span class="hljs-keyword">if</span> (ret != CKB_SUCCESS) {
+              <span class="hljs-keyword">return</span> ret;
+            }
+
+            <span class="hljs-keyword">mol_seg_t</span> script_seg;
+            script_seg.ptr = (<span class="hljs-keyword">uint8_t</span> *)script;
+            script_seg.size = len;
+            <span class="hljs-keyword">if</span> (MolReader_Script_verify(&amp;script_seg, <span class="hljs-literal">false</span>) != MOL_OK) {
+              <span class="hljs-keyword">return</span> ERROR_ENCODING;
+            }
+
+            <span class="hljs-keyword">mol_seg_t</span> item_seg;
+            <span class="hljs-keyword">switch</span> (item) {
+              <span class="hljs-keyword">case</span> MASK_CELL_LOCK_CODE_HASH:
+                item_seg = MolReader_Script_get_code_hash(&amp;script_seg);
+                blake2b_update(&amp;blake2b_ctx, item_seg.ptr, item_seg.size);
+                <span class="hljs-keyword">break</span>;
+              <span class="hljs-keyword">case</span> MASK_CELL_LOCK_ARGS:
+                item_seg = MolReader_Script_get_args(&amp;script_seg);
+                blake2b_update(&amp;blake2b_ctx, item_seg.ptr, item_seg.size);
+                <span class="hljs-keyword">break</span>;
+              <span class="hljs-keyword">case</span> MASK_CELL_LOCK_HASH_TYPE:
+                item_seg = MolReader_Script_get_hash_type(&amp;script_seg);
+                blake2b_update(&amp;blake2b_ctx, item_seg.ptr, item_seg.size);
+                <span class="hljs-keyword">break</span>;
+            }
+          } <span class="hljs-keyword">break</span>;
+          <span class="hljs-keyword">case</span> MASK_CELL_DATA: {
+            <span class="hljs-keyword">uint8_t</span> temp[ONE_BATCH_SIZE];
+            <span class="hljs-keyword">uint64_t</span> len = ONE_BATCH_SIZE;
+            <span class="hljs-keyword">int</span> ret = ckb_load_cell_data(temp, &amp;len, <span class="hljs-number">0</span>, index_code, source);
+            <span class="hljs-keyword">if</span> (ret != CKB_SUCCESS) {
+              <span class="hljs-keyword">return</span> ret;
+            }
+            <span class="hljs-keyword">uint64_t</span> offset = (len &gt; ONE_BATCH_SIZE) ? ONE_BATCH_SIZE : len;
+            blake2b_update(&amp;blake2b_ctx, temp, offset);
+            <span class="hljs-keyword">while</span> (offset &lt; len) {
+              <span class="hljs-keyword">uint64_t</span> current_len = ONE_BATCH_SIZE;
+              ret = ckb_load_cell_data(temp, &amp;current_len, offset, index_code,
+                                       source);
+              <span class="hljs-keyword">if</span> (ret != CKB_SUCCESS) {
+                <span class="hljs-keyword">return</span> ret;
+              }
+              <span class="hljs-keyword">uint64_t</span> current_read =
+                  (current_len &gt; ONE_BATCH_SIZE) ? ONE_BATCH_SIZE : current_len;
+              blake2b_update(&amp;blake2b_ctx, temp, current_read);
+              offset += current_read;
+            }
+          } <span class="hljs-keyword">break</span>;
+          <span class="hljs-keyword">default</span>:
+            <span class="hljs-keyword">return</span> ERROR_INVALID_MASK;
+        }
+        <span class="hljs-keyword">if</span> (label == LABEL_INPUT_CELL_SINCE) {
+          <span class="hljs-keyword">uint8_t</span> since[<span class="hljs-number">8</span>];
+          <span class="hljs-keyword">uint64_t</span> len = <span class="hljs-number">8</span>;
+          <span class="hljs-keyword">int</span> ret = ckb_load_input_by_field(since, &amp;len, <span class="hljs-number">0</span>, index_code, source,
+                                            CKB_INPUT_FIELD_SINCE);
+          <span class="hljs-keyword">if</span> (ret != CKB_SUCCESS) {
+            <span class="hljs-keyword">return</span> ret;
+          }
+          blake2b_update(&amp;blake2b_ctx, since, <span class="hljs-number">8</span>);
+        }
+      } <span class="hljs-keyword">break</span>;
+      <span class="hljs-keyword">case</span> LABEL_INPUT_OUTPOINT: {
+        <span class="hljs-keyword">uint8_t</span> buf[<span class="hljs-number">512</span>];
+        <span class="hljs-keyword">uint64_t</span> len = <span class="hljs-number">512</span>;
+        <span class="hljs-keyword">int</span> ret;
+        <span class="hljs-keyword">if</span> (mask == MASK_OUTPOINT_ALL) {
+          ret = ckb_checked_load_input(buf, &amp;len, <span class="hljs-number">0</span>, index_code,
+                                       CKB_SOURCE_INPUT);
+        } <span class="hljs-keyword">else</span> {
+          <span class="hljs-keyword">switch</span> (mask) {
+            <span class="hljs-keyword">case</span> MASK_OUTPOINT_SINCE:
+              ret = ckb_checked_load_input_by_field(buf, &amp;len, <span class="hljs-number">0</span>, index_code,
+                                                    CKB_SOURCE_INPUT,
+                                                    CKB_INPUT_FIELD_SINCE);
+              <span class="hljs-keyword">break</span>;
+            <span class="hljs-keyword">case</span> MASK_OUTPOINT_TX_HASH:
+            <span class="hljs-keyword">case</span> MASK_OUTPOINT_INDEX: {
+              <span class="hljs-keyword">uint8_t</span> temp[<span class="hljs-number">512</span>];
+              <span class="hljs-keyword">uint64_t</span> temp_len = <span class="hljs-number">512</span>;
+              ret = ckb_checked_load_input_by_field(
+                  temp, &amp;temp_len, <span class="hljs-number">0</span>, index_code, CKB_SOURCE_INPUT,
+                  CKB_INPUT_FIELD_OUT_POINT);
+              <span class="hljs-keyword">if</span> (ret != CKB_SUCCESS) {
+                <span class="hljs-keyword">return</span> ret;
+              }
+              <span class="hljs-keyword">mol_seg_t</span> outpoint_seg;
+              outpoint_seg.ptr = temp;
+              outpoint_seg.size = temp_len;
+              <span class="hljs-keyword">if</span> (MolReader_OutPoint_verify(&amp;outpoint_seg, <span class="hljs-literal">false</span>) != MOL_OK) {
+                <span class="hljs-keyword">return</span> ERROR_ENCODING;
+              }
+              <span class="hljs-keyword">if</span> (mask == MASK_OUTPOINT_TX_HASH) {
+                <span class="hljs-keyword">mol_seg_t</span> tx_hash_seg =
+                    MolReader_OutPoint_get_tx_hash(&amp;outpoint_seg);
+                <span class="hljs-built_in">memcpy</span>(buf, tx_hash_seg.ptr, tx_hash_seg.size);
+                len = tx_hash_seg.size;
+              } <span class="hljs-keyword">else</span> {
+                <span class="hljs-keyword">mol_seg_t</span> index_seg =
+                    MolReader_OutPoint_get_tx_hash(&amp;index_seg);
+                <span class="hljs-built_in">memcpy</span>(buf, index_seg.ptr, index_seg.size);
+                len = index_seg.size;
+              }
+              ret = CKB_SUCCESS;
+            } <span class="hljs-keyword">break</span>;
+            <span class="hljs-keyword">default</span>:
+              <span class="hljs-keyword">return</span> ERROR_INVALID_MASK;
+          }
+        }
+        <span class="hljs-keyword">if</span> (ret != CKB_SUCCESS) {
+          <span class="hljs-keyword">return</span> ret;
+        }
+        blake2b_update(&amp;blake2b_ctx, buf, len);
+      } <span class="hljs-keyword">break</span>;
+      <span class="hljs-keyword">case</span> LABEL_END_OF_LIST:
+        <span class="hljs-keyword">if</span> (i != sighash_array_length / <span class="hljs-number">3</span> - <span class="hljs-number">1</span>) {
+          <span class="hljs-keyword">return</span> ERROR_INVALID_LABEL;
+        }
+        <span class="hljs-keyword">break</span>;
+      <span class="hljs-keyword">default</span>:
+        <span class="hljs-keyword">return</span> ERROR_INVALID_LABEL;
+    }
+  }
+
+  <span class="hljs-keyword">uint8_t</span> signature_bytes[SIGNATURE_SIZE];
+  <span class="hljs-built_in">memcpy</span>(signature_bytes, &amp;lock_bytes_seg.ptr[sighash_array_length],
+         SIGNATURE_SIZE);</pre></div></div>
+            
+        </li>
+        
+        
+        <li id="section-8">
+            <div class="annotation">
+              
+              <div class="pilwrap ">
+                <a class="pilcrow" href="#section-8">&#182;</a>
+              </div>
+              <p>Clear lock field to zero, then digest the first witness</p>
+
+            </div>
+            
+            <div class="content"><div class='highlight'><pre>  <span class="hljs-built_in">memset</span>((<span class="hljs-keyword">void</span> *)(&amp;lock_bytes_seg.ptr[sighash_array_length]), <span class="hljs-number">0</span>,
+         SIGNATURE_SIZE);
+  blake2b_update(&amp;blake2b_ctx, (<span class="hljs-keyword">char</span> *)&amp;witness_len, <span class="hljs-keyword">sizeof</span>(<span class="hljs-keyword">uint64_t</span>));
+  blake2b_update(&amp;blake2b_ctx, witness, witness_len);
+
+  <span class="hljs-keyword">uint8_t</span> temp[WITNESS_SIZE];</pre></div></div>
+            
+        </li>
+        
+        
+        <li id="section-9">
+            <div class="annotation">
+              
+              <div class="pilwrap ">
+                <a class="pilcrow" href="#section-9">&#182;</a>
+              </div>
+              <p>Digest same group witnesses</p>
+
+            </div>
+            
+            <div class="content"><div class='highlight'><pre>  <span class="hljs-keyword">size_t</span> i = <span class="hljs-number">1</span>;
+  <span class="hljs-keyword">while</span> (<span class="hljs-number">1</span>) {
+    <span class="hljs-keyword">uint64_t</span> len = WITNESS_SIZE;
+    ret = ckb_load_witness(temp, &amp;len, <span class="hljs-number">0</span>, i, CKB_SOURCE_GROUP_INPUT);
+    <span class="hljs-keyword">if</span> (ret == CKB_INDEX_OUT_OF_BOUND) {
+      <span class="hljs-keyword">break</span>;
+    }
+    <span class="hljs-keyword">if</span> (ret != CKB_SUCCESS) {
+      <span class="hljs-keyword">return</span> ERROR_SYSCALL;
+    }
+    <span class="hljs-keyword">if</span> (len &gt; WITNESS_SIZE) {
+      <span class="hljs-keyword">return</span> ERROR_WITNESS_SIZE;
+    }
+    blake2b_update(&amp;blake2b_ctx, (<span class="hljs-keyword">char</span> *)&amp;len, <span class="hljs-keyword">sizeof</span>(<span class="hljs-keyword">uint64_t</span>));
+    blake2b_update(&amp;blake2b_ctx, temp, len);
+    i += <span class="hljs-number">1</span>;
+  }</pre></div></div>
+            
+        </li>
+        
+        
+        <li id="section-10">
+            <div class="annotation">
+              
+              <div class="pilwrap ">
+                <a class="pilcrow" href="#section-10">&#182;</a>
+              </div>
+              <p>Digest witnesses that not covered by inputs</p>
+
+            </div>
+            
+            <div class="content"><div class='highlight'><pre>  i = ckb_calculate_inputs_len();
+  <span class="hljs-keyword">while</span> (<span class="hljs-number">1</span>) {
+    <span class="hljs-keyword">uint64_t</span> len = WITNESS_SIZE;
+    ret = ckb_load_witness(temp, &amp;len, <span class="hljs-number">0</span>, i, CKB_SOURCE_INPUT);
+    <span class="hljs-keyword">if</span> (ret == CKB_INDEX_OUT_OF_BOUND) {
+      <span class="hljs-keyword">break</span>;
+    }
+    <span class="hljs-keyword">if</span> (ret != CKB_SUCCESS) {
+      <span class="hljs-keyword">return</span> ERROR_SYSCALL;
+    }
+    <span class="hljs-keyword">if</span> (len &gt; WITNESS_SIZE) {
+      <span class="hljs-keyword">return</span> ERROR_WITNESS_SIZE;
+    }
+    blake2b_update(&amp;blake2b_ctx, (<span class="hljs-keyword">char</span> *)&amp;len, <span class="hljs-keyword">sizeof</span>(<span class="hljs-keyword">uint64_t</span>));
+    blake2b_update(&amp;blake2b_ctx, temp, len);
+    i += <span class="hljs-number">1</span>;
+  }
+  <span class="hljs-keyword">unsigned</span> <span class="hljs-keyword">char</span> message[BLAKE2B_BLOCK_SIZE];
+  blake2b_final(&amp;blake2b_ctx, message, BLAKE2B_BLOCK_SIZE);</pre></div></div>
+            
+        </li>
+        
+        
+        <li id="section-11">
+            <div class="annotation">
+              
+              <div class="pilwrap ">
+                <a class="pilcrow" href="#section-11">&#182;</a>
+              </div>
+              <p>Load signature</p>
+
+            </div>
+            
+            <div class="content"><div class='highlight'><pre>  secp256k1_context context;
+  <span class="hljs-keyword">uint8_t</span> secp_data[CKB_SECP256K1_DATA_SIZE];
+  ret = ckb_secp256k1_custom_load_data(secp_data);
+  <span class="hljs-keyword">if</span> (ret != <span class="hljs-number">0</span>) {
+    <span class="hljs-keyword">return</span> ret;
+  }
+  ret = ckb_secp256k1_custom_verify_only_initialize(&amp;context, secp_data);
+  <span class="hljs-keyword">if</span> (ret != <span class="hljs-number">0</span>) {
+    <span class="hljs-keyword">return</span> ret;
+  }
+
+  secp256k1_ecdsa_recoverable_signature signature;
+  <span class="hljs-keyword">if</span> (secp256k1_ecdsa_recoverable_signature_parse_compact(
+          &amp;context, &amp;signature, signature_bytes,
+          signature_bytes[RECID_INDEX]) == <span class="hljs-number">0</span>) {
+    <span class="hljs-keyword">return</span> ERROR_SECP_PARSE_SIGNATURE;
+  }</pre></div></div>
+            
+        </li>
+        
+        
+        <li id="section-12">
+            <div class="annotation">
+              
+              <div class="pilwrap ">
+                <a class="pilcrow" href="#section-12">&#182;</a>
+              </div>
+              <p>Recover pubkey</p>
+
+            </div>
+            
+            <div class="content"><div class='highlight'><pre>  secp256k1_pubkey pubkey;
+  <span class="hljs-keyword">if</span> (secp256k1_ecdsa_recover(&amp;context, &amp;pubkey, &amp;signature, message) != <span class="hljs-number">1</span>) {
+    <span class="hljs-keyword">return</span> ERROR_SECP_RECOVER_PUBKEY;
+  }</pre></div></div>
+            
+        </li>
+        
+        
+        <li id="section-13">
+            <div class="annotation">
+              
+              <div class="pilwrap ">
+                <a class="pilcrow" href="#section-13">&#182;</a>
+              </div>
+              <p>Check pubkey hash</p>
+
+            </div>
+            
+            <div class="content"><div class='highlight'><pre>  <span class="hljs-keyword">size_t</span> pubkey_size = PUBKEY_SIZE;
+  <span class="hljs-keyword">if</span> (secp256k1_ec_pubkey_serialize(&amp;context, temp, &amp;pubkey_size, &amp;pubkey,
+                                    SECP256K1_EC_COMPRESSED) != <span class="hljs-number">1</span>) {
+    <span class="hljs-keyword">return</span> ERROR_SECP_SERIALIZE_PUBKEY;
+  }
+
+  blake2b_init(&amp;blake2b_ctx, BLAKE2B_BLOCK_SIZE);
+  blake2b_update(&amp;blake2b_ctx, temp, pubkey_size);
+  blake2b_final(&amp;blake2b_ctx, temp, BLAKE2B_BLOCK_SIZE);</pre></div></div>
+            
+        </li>
+        
+        
+        <li id="section-14">
+            <div class="annotation">
+              
+              <div class="pilwrap ">
+                <a class="pilcrow" href="#section-14">&#182;</a>
+              </div>
+              <p>Load args</p>
+
+            </div>
+            
+            <div class="content"><div class='highlight'><pre>  <span class="hljs-keyword">unsigned</span> <span class="hljs-keyword">char</span> script[SCRIPT_SIZE];
+  <span class="hljs-keyword">uint64_t</span> len = SCRIPT_SIZE;
+  ret = ckb_load_script(script, &amp;len, <span class="hljs-number">0</span>);
+  <span class="hljs-keyword">if</span> (ret != CKB_SUCCESS) {
+    <span class="hljs-keyword">return</span> ERROR_SYSCALL;
+  }
+  <span class="hljs-keyword">if</span> (len &gt; SCRIPT_SIZE) {
+    <span class="hljs-keyword">return</span> ERROR_SCRIPT_TOO_LONG;
+  }
+  <span class="hljs-keyword">mol_seg_t</span> script_seg;
+  script_seg.ptr = (<span class="hljs-keyword">uint8_t</span> *)script;
+  script_seg.size = len;
+
+  <span class="hljs-keyword">if</span> (MolReader_Script_verify(&amp;script_seg, <span class="hljs-literal">false</span>) != MOL_OK) {
+    <span class="hljs-keyword">return</span> ERROR_ENCODING;
+  }
+
+  <span class="hljs-keyword">mol_seg_t</span> args_seg = MolReader_Script_get_args(&amp;script_seg);
+  <span class="hljs-keyword">mol_seg_t</span> args_bytes_seg = MolReader_Bytes_raw_bytes(&amp;args_seg);
+  <span class="hljs-keyword">if</span> (args_bytes_seg.size != BLAKE160_SIZE) {
+    <span class="hljs-keyword">return</span> ERROR_ARGUMENTS_LEN;
+  }
+
+  <span class="hljs-keyword">if</span> (<span class="hljs-built_in">memcmp</span>(args_bytes_seg.ptr, temp, BLAKE160_SIZE) != <span class="hljs-number">0</span>) {
+    <span class="hljs-keyword">return</span> ERROR_PUBKEY_BLAKE160_HASH;
+  }
+
+  <span class="hljs-keyword">return</span> <span class="hljs-number">0</span>;
+}</pre></div></div>
+            
+        </li>
+        
+    </ul>
+  </div>
+</body>
+</html>

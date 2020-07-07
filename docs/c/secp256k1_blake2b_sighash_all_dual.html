@@ -20,6 +20,11 @@
             <div id="jump_page">
               
                 
+                <a class="source" href="open_transaction.html">
+                  c/open_transaction.c
+                </a>
+              
+                
                 <a class="source" href="secp256k1_blake2b_sighash_all_dual.html">
                   c/secp256k1_blake2b_sighash_all_dual.c
                 </a>
@@ -97,7 +102,11 @@ This provides dynamic linking related features.</p>
 <span class="hljs-meta">#<span class="hljs-meta-keyword">define</span> ERROR_SECP_SERIALIZE_PUBKEY -15</span>
 <span class="hljs-meta">#<span class="hljs-meta-keyword">define</span> ERROR_SCRIPT_TOO_LONG -21</span>
 <span class="hljs-meta">#<span class="hljs-meta-keyword">define</span> ERROR_WITNESS_SIZE -22</span>
-<span class="hljs-meta">#<span class="hljs-meta-keyword">define</span> ERROR_PUBKEY_BLAKE160_HASH -31</span></pre></div></div>
+<span class="hljs-meta">#<span class="hljs-meta-keyword">define</span> ERROR_PUBKEY_BLAKE160_HASH -31</span>
+<span class="hljs-meta">#<span class="hljs-meta-keyword">define</span> ERROR_INVALID_PREFILLED_DATA_SIZE -41</span>
+<span class="hljs-meta">#<span class="hljs-meta-keyword">define</span> ERROR_INVALID_SIGNATURE_SIZE -42</span>
+<span class="hljs-meta">#<span class="hljs-meta-keyword">define</span> ERROR_INVALID_MESSAGE_SIZE -43</span>
+<span class="hljs-meta">#<span class="hljs-meta-keyword">define</span> ERROR_INVALID_OUTPUT_SIZE -44</span></pre></div></div>
             
         </li>
         
@@ -127,6 +136,60 @@ This provides dynamic linking related features.</p>
     <span class="hljs-keyword">return</span> ERROR_ENCODING;
   }
   *lock_bytes_seg = MolReader_Bytes_raw_bytes(&amp;lock_seg);
+  <span class="hljs-keyword">return</span> CKB_SUCCESS;
+}
+
+__attribute__((visibility(<span class="hljs-string">"default"</span>))) <span class="hljs-function"><span class="hljs-keyword">int</span> <span class="hljs-title">load_prefilled_data</span><span class="hljs-params">(<span class="hljs-keyword">void</span> *data,
+                                                               <span class="hljs-keyword">size_t</span> *len)</span> </span>{
+  <span class="hljs-keyword">if</span> ((*len) &lt; CKB_SECP256K1_DATA_SIZE) {
+    *len = CKB_SECP256K1_DATA_SIZE;
+    <span class="hljs-keyword">return</span> ERROR_INVALID_PREFILLED_DATA_SIZE;
+  }
+  <span class="hljs-keyword">int</span> ret = ckb_secp256k1_custom_load_data(data);
+  <span class="hljs-keyword">if</span> (ret != CKB_SUCCESS) {
+    <span class="hljs-keyword">return</span> ret;
+  }
+  *len = CKB_SECP256K1_DATA_SIZE;
+  <span class="hljs-keyword">return</span> CKB_SUCCESS;
+}
+
+__attribute__((visibility(<span class="hljs-string">"default"</span>))) <span class="hljs-function"><span class="hljs-keyword">int</span> <span class="hljs-title">validate_signature</span><span class="hljs-params">(
+    <span class="hljs-keyword">void</span> *prefilled_data, <span class="hljs-keyword">const</span> <span class="hljs-keyword">uint8_t</span> *signature_buffer,
+    <span class="hljs-keyword">size_t</span> signature_size, <span class="hljs-keyword">const</span> <span class="hljs-keyword">uint8_t</span> *message_buffer, <span class="hljs-keyword">size_t</span> message_size,
+    <span class="hljs-keyword">uint8_t</span> *output, <span class="hljs-keyword">size_t</span> *output_len)</span> </span>{
+  <span class="hljs-keyword">if</span> (signature_size != SIGNATURE_SIZE) {
+    <span class="hljs-keyword">return</span> ERROR_INVALID_SIGNATURE_SIZE;
+  }
+  <span class="hljs-keyword">if</span> (message_size != <span class="hljs-number">32</span>) {
+    <span class="hljs-keyword">return</span> ERROR_INVALID_MESSAGE_SIZE;
+  }
+  <span class="hljs-keyword">if</span> (*output_len &lt; PUBKEY_SIZE) {
+    <span class="hljs-keyword">return</span> ERROR_INVALID_OUTPUT_SIZE;
+  }
+  secp256k1_context context;
+  <span class="hljs-keyword">int</span> ret =
+      ckb_secp256k1_custom_verify_only_initialize(&amp;context, prefilled_data);
+  <span class="hljs-keyword">if</span> (ret != <span class="hljs-number">0</span>) {
+    <span class="hljs-keyword">return</span> ret;
+  }
+
+  secp256k1_ecdsa_recoverable_signature signature;
+  <span class="hljs-keyword">if</span> (secp256k1_ecdsa_recoverable_signature_parse_compact(
+          &amp;context, &amp;signature, signature_buffer,
+          signature_buffer[RECID_INDEX]) == <span class="hljs-number">0</span>) {
+    <span class="hljs-keyword">return</span> ERROR_SECP_PARSE_SIGNATURE;
+  }
+
+  secp256k1_pubkey pubkey;
+  <span class="hljs-keyword">if</span> (secp256k1_ecdsa_recover(&amp;context, &amp;pubkey, &amp;signature, message_buffer) !=
+      <span class="hljs-number">1</span>) {
+    <span class="hljs-keyword">return</span> ERROR_SECP_RECOVER_PUBKEY;
+  }
+
+  <span class="hljs-keyword">if</span> (secp256k1_ec_pubkey_serialize(&amp;context, output, output_len, &amp;pubkey,
+                                    SECP256K1_EC_COMPRESSED) != <span class="hljs-number">1</span>) {
+    <span class="hljs-keyword">return</span> ERROR_SECP_SERIALIZE_PUBKEY;
+  }
   <span class="hljs-keyword">return</span> CKB_SUCCESS;
 }</pre></div></div>
             
@@ -339,6 +402,10 @@ library.</p>
             
             <div class="content"><div class='highlight'><pre>  secp256k1_context context;
   <span class="hljs-keyword">uint8_t</span> secp_data[CKB_SECP256K1_DATA_SIZE];
+  ret = ckb_secp256k1_custom_load_data(secp_data);
+  <span class="hljs-keyword">if</span> (ret != <span class="hljs-number">0</span>) {
+    <span class="hljs-keyword">return</span> ret;
+  }
   ret = ckb_secp256k1_custom_verify_only_initialize(&amp;context, secp_data);
   <span class="hljs-keyword">if</span> (ret != <span class="hljs-number">0</span>) {
     <span class="hljs-keyword">return</span> ret;
