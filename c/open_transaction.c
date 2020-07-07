@@ -102,29 +102,23 @@ int main() {
   if (lock_bytes_seg.size <= SIGNATURE_SIZE) {
     return ERROR_ARGUMENTS_LEN;
   }
-  size_t sighash_array_length = lock_bytes_seg.size - SIGNATURE_SIZE;
-  if (sighash_array_length % 3 != 0) {
-    return ERROR_ARGUMENTS_LEN;
-  }
 
   // Process sighash coverage array
   blake2b_state blake2b_ctx;
   blake2b_init(&blake2b_ctx, BLAKE2B_BLOCK_SIZE);
   uint8_t *sighash_array = (uint8_t *)lock_bytes_seg.ptr;
 
-  for (size_t i = 0; i < sighash_array_length / 3; i++) {
-    uint8_t *tx_component = &sighash_array[i * 3];
+  size_t i = 0;
+  int has_more = 1;
+  while (has_more) {
+    if (i >= lock_bytes_seg.size) {
+      return ERROR_INVALID_LABEL;
+    }
+    uint8_t *tx_component = &sighash_array[(i++) * 3];
     uint8_t label = tx_component[0] >> 4;
     uint16_t index_code =
         (((uint16_t)(tx_component[0] & 0xF)) << 8) | tx_component[1];
     uint8_t mask = tx_component[2];
-
-    // The last item must be 0xF, which is end of list.
-    if (i == sighash_array_length / 3 - 1) {
-      if (label != LABEL_END_OF_LIST) {
-        return ERROR_INVALID_LABEL;
-      }
-    }
 
     switch (label) {
       case LABEL_SIGHASH_ALL: {
@@ -296,15 +290,17 @@ int main() {
         blake2b_update(&blake2b_ctx, buf, len);
       } break;
       case LABEL_END_OF_LIST:
-        if (i != sighash_array_length / 3 - 1) {
-          return ERROR_INVALID_LABEL;
-        }
+        has_more = 0;
         break;
       default:
         return ERROR_INVALID_LABEL;
     }
   }
 
+  size_t sighash_array_length = i * 3;
+  if (lock_bytes_seg.size != sighash_array_length + SIGNATURE_SIZE) {
+    return ERROR_ARGUMENTS_LEN;
+  }
   uint8_t signature_bytes[SIGNATURE_SIZE];
   memcpy(signature_bytes, &lock_bytes_seg.ptr[sighash_array_length],
          SIGNATURE_SIZE);
@@ -316,7 +312,7 @@ int main() {
 
   uint8_t temp[WITNESS_SIZE];
   // Digest same group witnesses
-  size_t i = 1;
+  i = 1;
   while (1) {
     uint64_t len = WITNESS_SIZE;
     ret = ckb_load_witness(temp, &len, 0, i, CKB_SOURCE_GROUP_INPUT);
