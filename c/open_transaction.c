@@ -111,7 +111,7 @@ int main() {
   size_t i = 0;
   int has_more = 1;
   while (has_more) {
-    if (i >= lock_bytes_seg.size) {
+    if (i + 3 > lock_bytes_seg.size) {
       return ERROR_INVALID_LABEL;
     }
     uint8_t *tx_component = &sighash_array[(i++) * 3];
