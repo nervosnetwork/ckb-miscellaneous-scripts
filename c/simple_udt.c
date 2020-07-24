@@ -146,7 +146,7 @@ int main() {
     if (ret != CKB_SUCCESS) {
       return ret;
     }
-    if (len != 16) {
+    if (len < 16) {
       return ERROR_ENCODING;
     }
     input_amount += current_amount;
@@ -176,7 +176,7 @@ int main() {
     if (ret != CKB_SUCCESS) {
       return ret;
     }
-    if (len != 16) {
+    if (len < 16) {
       return ERROR_ENCODING;
     }
     output_amount += current_amount;
