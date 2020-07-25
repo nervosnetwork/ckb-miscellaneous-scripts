@@ -45,19 +45,23 @@
 #define LABEL_INPUT_CELL_SINCE 0x3
 #define LABEL_INPUT_OUTPOINT 0x4
 
-#define MASK_CELL_CAPACITY 0x0
-#define MASK_CELL_TYPE_CODE_HASH 0x1
-#define MASK_CELL_TYPE_ARGS 0x2
-#define MASK_CELL_TYPE_HASH_TYPE 0x3
-#define MASK_CELL_LOCK_CODE_HASH 0x4
-#define MASK_CELL_LOCK_ARGS 0x5
-#define MASK_CELL_LOCK_HASH_TYPE 0x6
-#define MASK_CELL_DATA 0x7
+#define MASK_CELL_CAPACITY 0x1
+#define MASK_CELL_TYPE_CODE_HASH 0x2
+#define MASK_CELL_TYPE_ARGS 0x4
+#define MASK_CELL_TYPE_HASH_TYPE 0x8
+#define MASK_CELL_ANY_TYPE \
+  (MASK_CELL_TYPE_CODE_HASH | MASK_CELL_TYPE_ARGS | MASK_CELL_TYPE_HASH_TYPE)
+#define MASK_CELL_LOCK_CODE_HASH 0x10
+#define MASK_CELL_LOCK_ARGS 0x20
+#define MASK_CELL_LOCK_HASH_TYPE 0x40
+#define MASK_CELL_ANY_LOCK \
+  (MASK_CELL_LOCK_CODE_HASH | MASK_CELL_LOCK_ARGS | MASK_CELL_LOCK_HASH_TYPE)
+#define MASK_CELL_DATA 0x80
 #define MASK_CELL_ALL 0xFF
 
-#define MASK_OUTPOINT_TX_HASH 0x0
-#define MASK_OUTPOINT_INDEX 0x1
-#define MASK_OUTPOINT_SINCE 0x2
+#define MASK_OUTPOINT_TX_HASH 0x1
+#define MASK_OUTPOINT_INDEX 0x2
+#define MASK_OUTPOINT_SINCE 0x4
 #define MASK_OUTPOINT_ALL 0xFF
 
 // Extract lock from WitnessArgs
@@ -115,6 +119,38 @@ int hash_cell(blake2b_state *ctx, size_t index_code, size_t source) {
 
 int hash_input(blake2b_state *ctx, size_t index_code, size_t source) {
   return load_and_hash(ctx, index_code, source, ckb_load_input);
+}
+
+int hash_script_fields(blake2b_state *ctx, size_t index_code, size_t source,
+                       size_t field, uint8_t lock_masks) {
+  unsigned char script[SCRIPT_SIZE];
+  uint64_t len = SCRIPT_SIZE;
+  int ret = ckb_checked_load_cell_by_field(script, &len, 0, index_code, source,
+                                           field);
+  if (ret != CKB_SUCCESS) {
+    return ret;
+  }
+  mol_seg_t script_seg;
+  script_seg.ptr = (uint8_t *)script;
+  script_seg.size = len;
+  if (MolReader_Script_verify(&script_seg, false) != MOL_OK) {
+    return ERROR_ENCODING;
+  }
+
+  if ((lock_masks & MASK_CELL_LOCK_CODE_HASH) != 0) {
+    mol_seg_t item_seg = MolReader_Script_get_code_hash(&script_seg);
+    blake2b_update(ctx, item_seg.ptr, item_seg.size);
+  }
+  if ((lock_masks & MASK_CELL_LOCK_ARGS) != 0) {
+    mol_seg_t item_seg = MolReader_Script_get_args(&script_seg);
+    blake2b_update(ctx, item_seg.ptr, item_seg.size);
+  }
+  if ((lock_masks & MASK_CELL_LOCK_HASH_TYPE) != 0) {
+    mol_seg_t item_seg = MolReader_Script_get_hash_type(&script_seg);
+    blake2b_update(ctx, item_seg.ptr, item_seg.size);
+  }
+
+  return CKB_SUCCESS;
 }
 
 int main() {
@@ -191,10 +227,17 @@ int main() {
       case LABEL_INPUT_CELL_SINCE: {
         size_t source =
             (label == LABEL_OUTPUT) ? CKB_SOURCE_OUTPUT : CKB_SOURCE_INPUT;
-        size_t field;
-        uint8_t item;
-        switch (mask) {
-          case MASK_CELL_CAPACITY: {
+        if (mask == MASK_CELL_ALL) {
+          ret = hash_cell(&blake2b_ctx, index_code, source);
+          if (ret != CKB_SUCCESS) {
+            return ret;
+          }
+          ret = hash_cell_data(&blake2b_ctx, index_code, source);
+          if (ret != CKB_SUCCESS) {
+            return ret;
+          }
+        } else {
+          if ((mask & MASK_CELL_CAPACITY) != 0) {
             uint64_t capacity = 0;
             uint64_t len = 8;
             int ret = ckb_load_cell_by_field((uint8_t *)(&capacity), &len, 0,
@@ -204,80 +247,43 @@ int main() {
               return ret;
             }
             blake2b_update(&blake2b_ctx, (uint8_t *)(&capacity), 8);
-          } break;
-          case MASK_CELL_LOCK_CODE_HASH:
-          case MASK_CELL_LOCK_ARGS:
-          case MASK_CELL_LOCK_HASH_TYPE:
-            field = CKB_CELL_FIELD_LOCK;
-            item = mask;
-            goto PROCESS_SCRIPT;
-          case MASK_CELL_TYPE_CODE_HASH:
-            field = CKB_CELL_FIELD_TYPE;
-            item = MASK_CELL_LOCK_CODE_HASH;
-            goto PROCESS_SCRIPT;
-          case MASK_CELL_TYPE_ARGS:
-            field = CKB_CELL_FIELD_TYPE;
-            item = MASK_CELL_LOCK_ARGS;
-            goto PROCESS_SCRIPT;
-          case MASK_CELL_TYPE_HASH_TYPE:
-            field = CKB_CELL_FIELD_TYPE;
-            item = MASK_CELL_LOCK_HASH_TYPE;
-          PROCESS_SCRIPT : {
-            unsigned char script[SCRIPT_SIZE];
-            uint64_t len = SCRIPT_SIZE;
-            int ret = ckb_checked_load_cell_by_field(script, &len, 0,
-                                                     index_code, source, field);
+          }
+          if ((mask & MASK_CELL_ANY_TYPE) != 0) {
+            uint8_t lock_masks = 0;
+            if ((mask & MASK_CELL_TYPE_CODE_HASH) != 0) {
+              lock_masks |= MASK_CELL_LOCK_CODE_HASH;
+            }
+            if ((mask & MASK_CELL_TYPE_ARGS) != 0) {
+              lock_masks |= MASK_CELL_LOCK_ARGS;
+            }
+            if ((mask & MASK_CELL_TYPE_HASH_TYPE) != 0) {
+              lock_masks |= MASK_CELL_LOCK_HASH_TYPE;
+            }
+            ret = hash_script_fields(&blake2b_ctx, index_code, source,
+                                     CKB_CELL_FIELD_TYPE, lock_masks);
             if (ret != CKB_SUCCESS) {
               return ret;
             }
-
-            mol_seg_t script_seg;
-            script_seg.ptr = (uint8_t *)script;
-            script_seg.size = len;
-            if (MolReader_Script_verify(&script_seg, false) != MOL_OK) {
-              return ERROR_ENCODING;
+          }
+          if ((mask & MASK_CELL_ANY_LOCK) != 0) {
+            ret = hash_script_fields(&blake2b_ctx, index_code, source,
+                                     CKB_CELL_FIELD_LOCK, mask);
+            if (ret != CKB_SUCCESS) {
+              return ret;
             }
-
-            mol_seg_t item_seg;
-            switch (item) {
-              case MASK_CELL_LOCK_CODE_HASH:
-                item_seg = MolReader_Script_get_code_hash(&script_seg);
-                blake2b_update(&blake2b_ctx, item_seg.ptr, item_seg.size);
-                break;
-              case MASK_CELL_LOCK_ARGS:
-                item_seg = MolReader_Script_get_args(&script_seg);
-                blake2b_update(&blake2b_ctx, item_seg.ptr, item_seg.size);
-                break;
-              case MASK_CELL_LOCK_HASH_TYPE:
-                item_seg = MolReader_Script_get_hash_type(&script_seg);
-                blake2b_update(&blake2b_ctx, item_seg.ptr, item_seg.size);
-                break;
-            }
-          } break;
-          case MASK_CELL_DATA:
+          }
+          if ((mask & MASK_CELL_DATA) != 0) {
             ret = hash_cell_data(&blake2b_ctx, index_code, source);
             if (ret != CKB_SUCCESS) {
               return ret;
             }
-            break;
-          case MASK_CELL_ALL:
-            ret = hash_cell(&blake2b_ctx, index_code, source);
-            if (ret != CKB_SUCCESS) {
-              return ret;
-            }
-            ret = hash_cell_data(&blake2b_ctx, index_code, source);
-            if (ret != CKB_SUCCESS) {
-              return ret;
-            }
-            break;
-          default:
-            return ERROR_INVALID_MASK;
+          }
         }
         if (label == LABEL_INPUT_CELL_SINCE) {
           uint8_t since[8];
           uint64_t len = 8;
-          int ret = ckb_load_input_by_field(since, &len, 0, index_code, source,
-                                            CKB_INPUT_FIELD_SINCE);
+          int ret = ckb_checked_load_input_by_field(
+              since, &len, 0, index_code, source, CKB_INPUT_FIELD_SINCE);
           if (ret != CKB_SUCCESS) {
             return ret;
           }
@@ -285,56 +291,49 @@ int main() {
         }
       } break;
       case LABEL_INPUT_OUTPOINT: {
-        uint8_t buf[INPUT_SIZE];
-        uint64_t len = INPUT_SIZE;
-        int ret;
         if (mask == MASK_OUTPOINT_ALL) {
-          ret = ckb_checked_load_input(buf, &len, 0, index_code,
-                                       CKB_SOURCE_INPUT);
+          ret = hash_input(&blake2b_ctx, index_code, CKB_SOURCE_INPUT);
+          if (ret != CKB_SUCCESS) {
+            return ret;
+          }
         } else {
-          switch (mask) {
-            case MASK_OUTPOINT_SINCE:
-              ret = ckb_checked_load_input_by_field(buf, &len, 0, index_code,
-                                                    CKB_SOURCE_INPUT,
-                                                    CKB_INPUT_FIELD_SINCE);
-              break;
-            case MASK_OUTPOINT_TX_HASH:
-            case MASK_OUTPOINT_INDEX: {
-              uint8_t temp[INPUT_SIZE];
-              uint64_t temp_len = INPUT_SIZE;
-              ret = ckb_checked_load_input_by_field(
-                  temp, &temp_len, 0, index_code, CKB_SOURCE_INPUT,
-                  CKB_INPUT_FIELD_OUT_POINT);
-              if (ret != CKB_SUCCESS) {
-                return ret;
-              }
-              mol_seg_t outpoint_seg;
-              outpoint_seg.ptr = temp;
-              outpoint_seg.size = temp_len;
-              if (MolReader_OutPoint_verify(&outpoint_seg, false) != MOL_OK) {
-                return ERROR_ENCODING;
-              }
-              if (mask == MASK_OUTPOINT_TX_HASH) {
-                mol_seg_t tx_hash_seg =
-                    MolReader_OutPoint_get_tx_hash(&outpoint_seg);
-                memcpy(buf, tx_hash_seg.ptr, tx_hash_seg.size);
-                len = tx_hash_seg.size;
-              } else {
-                mol_seg_t index_seg =
-                    MolReader_OutPoint_get_tx_hash(&index_seg);
-                memcpy(buf, index_seg.ptr, index_seg.size);
-                len = index_seg.size;
-              }
-              ret = CKB_SUCCESS;
-            } break;
-            default:
-              return ERROR_INVALID_MASK;
+          if ((mask & MASK_OUTPOINT_SINCE) != 0) {
+            uint8_t since[8];
+            uint64_t len = 8;
+            ret = ckb_checked_load_input_by_field(since, &len, 0, index_code,
+                                                  CKB_SOURCE_INPUT,
+                                                  CKB_INPUT_FIELD_SINCE);
+            if (ret != CKB_SUCCESS) {
+              return ret;
+            }
+            blake2b_update(&blake2b_ctx, since, 8);
+          }
+
+          uint8_t input_buf[INPUT_SIZE];
+          uint64_t input_len = INPUT_SIZE;
+          ret = ckb_checked_load_input_by_field(input_buf, &input_len, 0,
+                                                index_code, CKB_SOURCE_INPUT,
+                                                CKB_INPUT_FIELD_OUT_POINT);
+          if (ret != CKB_SUCCESS) {
+            return ret;
+          }
+          mol_seg_t outpoint_seg;
+          outpoint_seg.ptr = input_buf;
+          outpoint_seg.size = input_len;
+          if (MolReader_OutPoint_verify(&outpoint_seg, false) != MOL_OK) {
+            return ERROR_ENCODING;
+          }
+
+          if ((mask & MASK_OUTPOINT_TX_HASH) != 0) {
+            mol_seg_t tx_hash_seg =
+                MolReader_OutPoint_get_tx_hash(&outpoint_seg);
+            blake2b_update(&blake2b_ctx, tx_hash_seg.ptr, tx_hash_seg.size);
+          }
+          if ((mask & MASK_OUTPOINT_INDEX) != 0) {
+            mol_seg_t index_seg = MolReader_OutPoint_get_tx_hash(&index_seg);
+            blake2b_update(&blake2b_ctx, index_seg.ptr, index_seg.size);
           }
         }
-        if (ret != CKB_SUCCESS) {
-          return ret;
-        }
-        blake2b_update(&blake2b_ctx, buf, len);
       } break;
       case LABEL_END_OF_LIST:
         has_more = 0;
