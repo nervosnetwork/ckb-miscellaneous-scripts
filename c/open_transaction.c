@@ -17,7 +17,8 @@
 /* 32 KB */
 #define WITNESS_SIZE 32768
 #define SCRIPT_SIZE 32768
-#define ONE_BATCH_SIZE 4096
+#define ONE_BATCH_SIZE 16384
+#define INPUT_SIZE 4096
 
 #define ERROR_ARGUMENTS_LEN -1
 #define ERROR_ENCODING -2
@@ -52,11 +53,12 @@
 #define MASK_CELL_LOCK_ARGS 0x5
 #define MASK_CELL_LOCK_HASH_TYPE 0x6
 #define MASK_CELL_DATA 0x7
+#define MASK_CELL_ALL 0xFF
 
 #define MASK_OUTPOINT_TX_HASH 0x0
 #define MASK_OUTPOINT_INDEX 0x1
 #define MASK_OUTPOINT_SINCE 0x2
-#define MASK_OUTPOINT_ALL 0x3
+#define MASK_OUTPOINT_ALL 0xFF
 
 // Extract lock from WitnessArgs
 int extract_witness_lock(uint8_t *witness, uint64_t len,
@@ -75,6 +77,44 @@ int extract_witness_lock(uint8_t *witness, uint64_t len,
   }
   *lock_bytes_seg = MolReader_Bytes_raw_bytes(&lock_seg);
   return CKB_SUCCESS;
+}
+
+typedef int (*load_function)(void *, uint64_t *, size_t, size_t, size_t);
+
+int load_and_hash(blake2b_state *ctx, size_t index_code, size_t source,
+                  load_function f) {
+  uint8_t temp[ONE_BATCH_SIZE];
+  uint64_t len = ONE_BATCH_SIZE;
+  int ret = f(temp, &len, 0, index_code, source);
+  if (ret != CKB_SUCCESS) {
+    return ret;
+  }
+  uint64_t offset = (len > ONE_BATCH_SIZE) ? ONE_BATCH_SIZE : len;
+  blake2b_update(ctx, temp, offset);
+  while (offset < len) {
+    uint64_t current_len = ONE_BATCH_SIZE;
+    ret = f(temp, &current_len, offset, index_code, source);
+    if (ret != CKB_SUCCESS) {
+      return ret;
+    }
+    uint64_t current_read =
+        (current_len > ONE_BATCH_SIZE) ? ONE_BATCH_SIZE : current_len;
+    blake2b_update(ctx, temp, current_read);
+    offset += current_read;
+  }
+  return CKB_SUCCESS;
+}
+
+int hash_cell_data(blake2b_state *ctx, size_t index_code, size_t source) {
+  return load_and_hash(ctx, index_code, source, ckb_load_cell_data);
+}
+
+int hash_cell(blake2b_state *ctx, size_t index_code, size_t source) {
+  return load_and_hash(ctx, index_code, source, ckb_load_cell);
+}
+
+int hash_input(blake2b_state *ctx, size_t index_code, size_t source) {
+  return load_and_hash(ctx, index_code, source, ckb_load_input);
 }
 
 int main() {
@@ -103,12 +143,25 @@ int main() {
     return ERROR_ARGUMENTS_LEN;
   }
 
-  // Process sighash coverage array
+  // For security reasons, we will need to hash all inputs from the current
+  // script group.
   blake2b_state blake2b_ctx;
   blake2b_init(&blake2b_ctx, BLAKE2B_BLOCK_SIZE);
-  uint8_t *sighash_array = (uint8_t *)lock_bytes_seg.ptr;
-
   size_t i = 0;
+  while (1) {
+    ret = hash_input(&blake2b_ctx, i, CKB_SOURCE_GROUP_INPUT);
+    if (ret == CKB_INDEX_OUT_OF_BOUND) {
+      break;
+    }
+    if (ret != CKB_SUCCESS) {
+      return ret;
+    }
+    i += 1;
+  }
+
+  // Process sighash coverage array
+  uint8_t *sighash_array = (uint8_t *)lock_bytes_seg.ptr;
+  i = 0;
   int has_more = 1;
   while (has_more) {
     if (i + 3 > lock_bytes_seg.size) {
@@ -201,28 +254,22 @@ int main() {
                 break;
             }
           } break;
-          case MASK_CELL_DATA: {
-            uint8_t temp[ONE_BATCH_SIZE];
-            uint64_t len = ONE_BATCH_SIZE;
-            int ret = ckb_load_cell_data(temp, &len, 0, index_code, source);
+          case MASK_CELL_DATA:
+            ret = hash_cell_data(&blake2b_ctx, index_code, source);
             if (ret != CKB_SUCCESS) {
               return ret;
             }
-            uint64_t offset = (len > ONE_BATCH_SIZE) ? ONE_BATCH_SIZE : len;
-            blake2b_update(&blake2b_ctx, temp, offset);
-            while (offset < len) {
-              uint64_t current_len = ONE_BATCH_SIZE;
-              ret = ckb_load_cell_data(temp, &current_len, offset, index_code,
-                                       source);
-              if (ret != CKB_SUCCESS) {
-                return ret;
-              }
-              uint64_t current_read =
-                  (current_len > ONE_BATCH_SIZE) ? ONE_BATCH_SIZE : current_len;
-              blake2b_update(&blake2b_ctx, temp, current_read);
-              offset += current_read;
+            break;
+          case MASK_CELL_ALL:
+            ret = hash_cell(&blake2b_ctx, index_code, source);
+            if (ret != CKB_SUCCESS) {
+              return ret;
             }
-          } break;
+            ret = hash_cell_data(&blake2b_ctx, index_code, source);
+            if (ret != CKB_SUCCESS) {
+              return ret;
+            }
+            break;
           default:
             return ERROR_INVALID_MASK;
         }
@@ -238,8 +285,8 @@ int main() {
         }
       } break;
       case LABEL_INPUT_OUTPOINT: {
-        uint8_t buf[512];
-        uint64_t len = 512;
+        uint8_t buf[INPUT_SIZE];
+        uint64_t len = INPUT_SIZE;
         int ret;
         if (mask == MASK_OUTPOINT_ALL) {
           ret = ckb_checked_load_input(buf, &len, 0, index_code,
@@ -253,8 +300,8 @@ int main() {
               break;
             case MASK_OUTPOINT_TX_HASH:
             case MASK_OUTPOINT_INDEX: {
-              uint8_t temp[512];
-              uint64_t temp_len = 512;
+              uint8_t temp[INPUT_SIZE];
+              uint64_t temp_len = INPUT_SIZE;
               ret = ckb_checked_load_input_by_field(
                   temp, &temp_len, 0, index_code, CKB_SOURCE_INPUT,
                   CKB_INPUT_FIELD_OUT_POINT);
