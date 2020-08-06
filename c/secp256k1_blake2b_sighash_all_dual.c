@@ -28,6 +28,7 @@
 #define MAX_WITNESS_SIZE 32768
 #define SCRIPT_SIZE 32768
 #define TEMP_SIZE 32768
+#define ONE_BATCH_SIZE 32768
 
 #define ERROR_ARGUMENTS_LEN -1
 #define ERROR_ENCODING -2
@@ -44,6 +45,29 @@
 #define ERROR_INVALID_SIGNATURE_SIZE -42
 #define ERROR_INVALID_MESSAGE_SIZE -43
 #define ERROR_INVALID_OUTPUT_SIZE -44
+
+int load_and_hash_witness(blake2b_state *ctx, size_t index, size_t source) {
+  uint8_t temp[ONE_BATCH_SIZE];
+  uint64_t len = ONE_BATCH_SIZE;
+  int ret = ckb_load_witness(temp, &len, 0, index, source);
+  if (ret != CKB_SUCCESS) {
+    return ret;
+  }
+  uint64_t offset = (len > ONE_BATCH_SIZE) ? ONE_BATCH_SIZE : len;
+  blake2b_update(ctx, temp, offset);
+  while (offset < len) {
+    uint64_t current_len = ONE_BATCH_SIZE;
+    ret = ckb_load_witness(temp, &current_len, offset, index, source);
+    if (ret != CKB_SUCCESS) {
+      return ret;
+    }
+    uint64_t current_read =
+        (current_len > ONE_BATCH_SIZE) ? ONE_BATCH_SIZE : current_len;
+    blake2b_update(ctx, temp, current_read);
+    offset += current_read;
+  }
+  return CKB_SUCCESS;
+}
 
 // Extract lock from WitnessArgs
 int extract_witness_lock(uint8_t *witness, uint64_t len,
@@ -181,37 +205,25 @@ validate_secp256k1_blake2b_sighash_all(uint8_t *output_public_key_hash) {
   // Digest same group witnesses
   size_t i = 1;
   while (1) {
-    len = MAX_WITNESS_SIZE;
-    ret = ckb_load_witness(temp, &len, 0, i, CKB_SOURCE_GROUP_INPUT);
+    ret = load_and_hash_witness(&blake2b_ctx, i, CKB_SOURCE_GROUP_INPUT);
     if (ret == CKB_INDEX_OUT_OF_BOUND) {
       break;
     }
     if (ret != CKB_SUCCESS) {
       return ERROR_SYSCALL;
     }
-    if (len > MAX_WITNESS_SIZE) {
-      return ERROR_WITNESS_SIZE;
-    }
-    blake2b_update(&blake2b_ctx, (char *)&len, sizeof(uint64_t));
-    blake2b_update(&blake2b_ctx, temp, len);
     i += 1;
   }
   // Digest witnesses that not covered by inputs
   i = ckb_calculate_inputs_len();
   while (1) {
-    len = MAX_WITNESS_SIZE;
-    ret = ckb_load_witness(temp, &len, 0, i, CKB_SOURCE_INPUT);
+    ret = load_and_hash_witness(&blake2b_ctx, i, CKB_SOURCE_INPUT);
     if (ret == CKB_INDEX_OUT_OF_BOUND) {
       break;
     }
     if (ret != CKB_SUCCESS) {
       return ERROR_SYSCALL;
     }
-    if (len > MAX_WITNESS_SIZE) {
-      return ERROR_WITNESS_SIZE;
-    }
-    blake2b_update(&blake2b_ctx, (char *)&len, sizeof(uint64_t));
-    blake2b_update(&blake2b_ctx, temp, len);
     i += 1;
   }
   blake2b_final(&blake2b_ctx, message, BLAKE2B_BLOCK_SIZE);
