@@ -13,9 +13,13 @@ include_directories(deps/secp256k1/src)
 include_directories(simulator)
 include_directories(deps/ckb-c-stdlib/molecule)
 include_directories(deps/ckb-c-stdlib)
+include_directories(deps/mbedtls/include)
 
 link_directories(deps/secp256k1/.libs)
+link_directories(deps/mbedtls/library)
 link_libraries(libsecp256k1.a)
+link_libraries(libmbedcrypto.a)
+
 set(common_files deps/molecule/molecule_builder.h
         deps/molecule/molecule_reader.h
         simulator/ckb_syscall_sim.c)

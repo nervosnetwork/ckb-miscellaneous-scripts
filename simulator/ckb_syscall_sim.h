@@ -2,8 +2,9 @@
 // Created by xujiandong on 2020/8/20.
 //
 
-#ifndef XJD_CKB_SYSTEM_SCRIPTS_CKB_SYSCALL_SIM_H
-#define XJD_CKB_SYSTEM_SCRIPTS_CKB_SYSCALL_SIM_H
+// note, this macro must be same as in ckb_syscall.h
+#ifndef CKB_C_STDLIB_CKB_SYSCALLS_H_
+#define CKB_C_STDLIB_CKB_SYSCALLS_H_
 #include <stddef.h>
 #include <stdint.h>
 
@@ -60,4 +61,5 @@ int ckb_look_for_dep_with_hash(const uint8_t* data_hash, size_t* index);
 
 int ckb_calculate_inputs_len();
 
-#endif //XJD_CKB_SYSTEM_SCRIPTS_CKB_SYSCALL_SIM_H
+#endif
+

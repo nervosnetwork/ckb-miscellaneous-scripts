@@ -35,4 +35,6 @@ typedef struct signature {
     uint8_t* sig;
 } signature_t;
 
+int md_string(const mbedtls_md_info_t *md_info, const unsigned  char *buf, size_t n, unsigned char *output);
+void mbedtls_mpi_dump(const char *prefix, const mbedtls_mpi *X);
 #endif //CKB_MISCELLANEOUS_SCRIPTS_RSA_SIGHASH_ALL_H
