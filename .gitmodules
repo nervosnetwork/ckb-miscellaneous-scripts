@@ -5,6 +5,6 @@
 	path = deps/ckb-c-stdlib
 	url = https://github.com/nervosnetwork/ckb-c-stdlib
 [submodule "deps/mbedtls"]
-    path = deps/mbedtls
-    url = https://github.com/nervosnetwork/mbedtls
-    branch = master
+	path = deps/mbedtls
+	url = https://github.com/nervosnetwork/mbedtls
+	branch = master
