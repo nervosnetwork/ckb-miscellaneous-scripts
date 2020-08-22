@@ -80,11 +80,8 @@ __attribute__((visibility("default"))) int validate_signature(
 
      mbedtls_mpi_read_binary_le(&rsa.E, (const unsigned char*)&input_info->E, 4);
      // mbedtls_mpi_dump("rsa.E=", &rsa.E);
-     mbedtls_mpi_read_binary_le(&rsa.N, (const unsigned char*)&input_info->N, input_info->key_size/8);
-     rsa.N.p = input_info->N;
-     // note: the unit of .n is mbedtls_mpi_uint, it can be 4 or 8.
-     rsa.N.n = input_info->key_size/8/sizeof(mbedtls_mpi_uint);
-     rsa.N.s = 1;
+     mbedtls_mpi_read_binary_le(&rsa.N, (const unsigned char*)input_info->N, input_info->key_size/8);
+    //  mbedtls_mpi_dump("rsa.N=", &rsa.N);
 
 #if 0
      // keep this in case we need it for debugging.
@@ -168,6 +165,7 @@ int main(int argc, const char* argv[]) {
     }
     mbedtls_mpi NN;
     mbedtls_mpi_read_string(&NN, 16, N);
+
 //    mbedtls_mpi_dump("NN = ", &NN);
 
 //    mbedtls_mpi EE;
@@ -178,8 +176,10 @@ int main(int argc, const char* argv[]) {
     info.key_size = 1024;
     info.sig = sig_buf;
     info.E = 65537;
-    info.N = (uint8_t*)NN.p;
     info.sig_length = sig_len/2;
+
+    info.N = malloc(info.key_size/8);
+    mbedtls_mpi_write_binary_le(&NN, info.N, info.key_size/8);
 
     uint8_t output;
     size_t output_len;
@@ -197,6 +197,8 @@ int main(int argc, const char* argv[]) {
     } else {
         mbedtls_printf("(failed case) validate signature failed:%d\n", result);
     }
+
+    free(info.N);
     return 0;
 }
 
@@ -232,7 +234,7 @@ void mbedtls_mpi_dump(const char *prefix, const mbedtls_mpi *X) {
      * Buffer should have space for (short) label and decimal formatted MPI,
      * newline characters and '\0'
      */
-    char s[MBEDTLS_MPI_RW_BUFFER_SIZE];
+    char s[1024];
     memset(s, 0, sizeof(s));
 
     mbedtls_mpi_write_string(X, 16, s, sizeof(s) - 2, &n);
