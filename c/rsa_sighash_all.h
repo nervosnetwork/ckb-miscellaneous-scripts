@@ -16,24 +16,31 @@
  *
  * Because we need to use the same interfaces (see validate_signature) as secp256k1,
  * store 1) and 2) information alone with signature.
- * May be a little confusion.
  */
-typedef struct signature {
-    // RSA Key Size, for example, 1024, 2048.
+typedef struct RsaInfo {
+    // RSA Key Size, in bits. For example, 1024, 2048.
+    // Normally we use 1024; Choose 2048 for safety.
     uint16_t key_size;
 
-    // RSA public key, part E.
+    // RSA public key, part E. It's normally very small, OK to use uint32_to hold it.
+    // https://eprint.iacr.org/2008/510.pdf
+    // The choice e = 65537 = 2^16 + 1 is especially widespread. Of the certificates observed in the UCSD TLS
+    // Corpus [23] (which was obtained by surveying frequently-used TLS servers), 99.5% had e = 65537,
+    // and all had e at most 32 bits.
     uint32_t E;
-    // RSA public key, part N. Together with E, it's public key.
-    // The total length in byte is key_size/8.
-    // remember that RSA Key Size is in bit.
+
+    // RSA public key, part N.
+    // The public key is the combination of E and N.
+    // But N is a very large number and need to use array to represent it.
+    // The total length in byte is key_size/8 (The key_size is in bits).
+    // The memory layout is the same as the field "p" of mbedtls_mpi type.
     uint8_t* N;
 
-    // length of signature
+    // length of signature, in bytes.
     uint32_t sig_length;
     // pointer to signature
     uint8_t* sig;
-} signature_t;
+} RsaInfo;
 
 int md_string(const mbedtls_md_info_t *md_info, const unsigned  char *buf, size_t n, unsigned char *output);
 void mbedtls_mpi_dump(const char *prefix, const mbedtls_mpi *X);
