@@ -1,26 +1,12 @@
 // # rsa_sighash_all
 // same as secp256k1_blake2b_sighash_all_dual but with RSA (mbedtls)
-
-#include "ckb_consts.h"
-
-#if defined(USE_SIM)
-#include "ckb_syscall_sim.h"
-#else
-#include "ckb_syscalls.h"
-#endif
-
-#include "blake2b.h"
-#include "blockchain.h"
-#include "ckb_dlfcn.h"
-#include "ckb_utils.h"
-#include "secp256k1_helper.h"
-
-#include "mbedtls/config.h"
+#include <stdlib.h>
+#include <string.h>
 #include "mbedtls/rsa.h"
 #include "mbedtls/md.h"
-
 #include "rsa_sighash_all.h"
 
+#define CKB_SUCCESS 0
 #define ERROR_ARGUMENTS_LEN (-1)
 #define ERROR_ENCODING (-2)
 #define ERROR_SYSCALL (-3)
@@ -28,10 +14,13 @@
 #define ERROR_RSA_INVALID_PARAM2 (-41)
 #define ERROR_RSA_MDSTRING_FAILED (-42)
 #define ERROR_RSA_VERIFY_FAILED (-43)
+#define ERROR_RSA_ONLY_INIT (-44)
+
 
 #define CHECK_PARAM(cond, code) do {if (!(cond)) {exit_code = code; goto exit;}} while(0)
 
 #if defined(USE_SIM)
+#include <stdio.h>
 #define mbedtls_printf printf
 #else
 #define mbedtls_printf(x, ...)  (void)0
@@ -66,7 +55,7 @@ __attribute__((visibility("default"))) int validate_signature(
         size_t signature_size, const uint8_t *message_buffer, size_t message_size,
         uint8_t *output, size_t *output_len) {
     int ret;
-    int exit_code = EXIT_FAILURE;
+    int exit_code = ERROR_RSA_ONLY_INIT;
     mbedtls_rsa_context rsa;
     unsigned char hash[32];
     RsaInfo *input_info = (RsaInfo *) signature_buffer;
@@ -94,14 +83,14 @@ __attribute__((visibility("default"))) int validate_signature(
         goto exit;
     }
     mbedtls_printf("\nOK (the signature is valid)\n");
-    exit_code = EXIT_SUCCESS;
+    exit_code = CKB_SUCCESS;
 
 exit:
     mbedtls_rsa_free(&rsa);
     return exit_code;
 }
 
-#if defined(USE_SIM)
+#if defined(USE_SIM) || defined(RSA_RUN_TEST)
 
 static unsigned char get_hex(unsigned char c) {
     if (c >= '0' && c <= '9')
@@ -140,7 +129,7 @@ int main(int argc, const char *argv[]) {
     unsigned char sig_buf[MBEDTLS_MPI_MAX_SIZE];
     const char *N = "A1D46FBA2318F8DCEF16C280948B1CF27966B9B47225ED2989F8D74B45BD36049C0AAB5AD0FF003553BA843C8E12782FC5873BB89A3DC84B883D25666CD22BF3ACD5B675969F8BEBFBCAC93FDD927C7442B178B10D1DFF9398E52316AAE0AF74E594650BDC3C670241D418684593CDA1A7B9DC4F20D2FDC6F66344074003E211";
     // convert signature in plain string to binary
-    size_t i;
+    size_t i = 0;
     size_t sig_len = strlen(sig);
     const char *sig_ptr = sig;
     const char *sig_end = sig + sig_len;
@@ -170,7 +159,7 @@ int main(int argc, const char *argv[]) {
 
     uint8_t output;
     size_t output_len;
-    int result = validate_signature(NULL, (const uint8_t *) &info, sizeof(info), msg, strlen(msg), &output,
+    int result = validate_signature(NULL, (const uint8_t *) &info, sizeof(info), (const uint8_t *)msg, strlen(msg), &output,
                                     &output_len);
     if (result == 0) {
         mbedtls_printf("validate signature passed\n");
@@ -179,15 +168,19 @@ int main(int argc, const char *argv[]) {
     }
 
     msg = "hello, world!";
-    result = validate_signature(NULL, (const uint8_t *) &info, sizeof(info), msg, strlen(msg), &output, &output_len);
-    if (result == ERROR_RSA_VERIFY_FAILED) {
+    int result2 = validate_signature(NULL, (const uint8_t *) &info, sizeof(info), (const uint8_t *)msg, strlen(msg), &output, &output_len);
+    if (result2 == ERROR_RSA_VERIFY_FAILED) {
         mbedtls_printf("validate signature passed\n");
     } else {
         mbedtls_printf("(failed case) validate signature failed:%d\n", result);
     }
 
     free(info.N);
-    return 0;
+    if (result == 0 && result2 == ERROR_RSA_VERIFY_FAILED) {
+        return 0;
+    } else {
+        return 1;
+    }
 }
 
 #else

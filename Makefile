@@ -12,10 +12,18 @@ PROTOCOL_SCHEMA := build/blockchain.mol
 PROTOCOL_VERSION := d75e4c56ffa40e17fd2fe477da3f98c5578edcd1
 PROTOCOL_URL := https://raw.githubusercontent.com/nervosnetwork/ckb/${PROTOCOL_VERSION}/util/types/schemas/blockchain.mol
 
+# changes compared to CFLAGS:
+# 1. need <limits.h> here for mbedtls, can't use nostdinc
+# 2. remove -Wl,-static, cause "cannot find -lgcc_s" error
+# 3. use -Os instead -O3
+CFLAGS_MBEDTLS := -fPIC -Os -fvisibility=hidden -I c -I deps/mbedtls/include -Wall -Werror -Wno-nonnull -Wno-nonnull-compare -Wno-unused-function -g
+LDFLAGS_MBEDTLS := -fdata-sections -ffunction-sections -Wl,--gc-sections
+
+
 # docker pull nervos/ckb-riscv-gnu-toolchain:gnu-bionic-20191012
 BUILDER_DOCKER := nervos/ckb-riscv-gnu-toolchain@sha256:aae8a3f79705f67d505d1f1d5ddc694a4fd537ed1c7e9622420a470d59ba2ec3
 
-all: build/htlc build/secp256k1_blake2b_sighash_all_lib.so build/or build/simple_udt build/secp256k1_blake2b_sighash_all_dual build/and build/open_transaction
+all: build/htlc build/secp256k1_blake2b_sighash_all_lib.so build/or build/simple_udt build/secp256k1_blake2b_sighash_all_dual build/and build/open_transaction build/rsa_sighash_all
 
 all-via-docker: ${PROTOCOL_HEADER} build/or.h
 	docker run --rm -v `pwd`:/code ${BUILDER_DOCKER} bash -c "cd /code && make"
@@ -70,6 +78,25 @@ build/simple_udt: c/simple_udt.c $(PROTOCOL_HEADER)
 build/or.h: c/or.mol ${PROTOCOL_SCHEMA}
 	${MOLC} --language c --schema-file $< > $@
 
+deps/mbedtls/library/libmbedcrypto.a:
+	cp deps/config.h.template deps/mbedtls/include/mbedtls
+	make -C deps/mbedtls/library CC=${CC} LD=${LD} CFLAGS="-Os -fPIC" libmbedcrypto.a libmbedx509.a
+
+build/rsa_sighash_all: c/rsa_sighash_all.c deps/mbedtls/library/libmbedcrypto.a
+	$(CC) $(CFLAGS_MBEDTLS) $(LDFLAGS_MBEDTLS) -fPIC -fPIE -pie -Wl,--dynamic-list c/rsa.syms -o $@ $^
+
+build/rsa_sighash_all_test: c/rsa_sighash_all.c deps/mbedtls/library/libmbedcrypto.a
+	# failed with riscv64-unknown-linux-gnu-gcc, try to uncomment the following line:
+	# when run in CKB-VM, it returns: Err(OutOfBound)
+	#riscv64-unknown-linux-gnu-gcc -DRSA_RUN_TEST $(CFLAGS_MBEDTLS) -o $@ $^
+	riscv64-unknown-elf-gcc -DRSA_RUN_TEST $(CFLAGS_MBEDTLS) -o $@ $^
+
+rsa_sighash_clean:
+	make -C deps/mbedtls/library clean
+	rm -f build/rsa_sighash_all
+	rm -f build/rsa_sighash_all_test
+
+
 $(SECP256K1_SRC):
 	cd deps/secp256k1 && \
 		./autogen.sh && \
@@ -106,6 +133,8 @@ clean:
 	rm -rf build/or build/or.h
 	rm -rf build/simple_udt build/secp256k1_blake2b_sighash_all_dual build/and
 	cd deps/secp256k1 && [ -f "Makefile" ] && make clean
+	make -C deps/mbedtls/library clean
+	rm -f build/rsa_sighash_all
 
 dist: clean all
 

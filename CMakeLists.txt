@@ -14,7 +14,7 @@ include_directories(deps/ckb-c-stdlib/molecule)
 include_directories(deps/ckb-c-stdlib)
 include_directories(deps/mbedtls/include)
 
-link_directories(deps/secp256k1/.libs)
+#link_directories(deps/secp256k1/.libs)
 #link_directories(deps/mbedtls/library)
 #link_libraries(libsecp256k1.a)
 #link_libraries(libmbedcrypto.a)
