@@ -53,6 +53,7 @@ int load_and_hash_witness(blake2b_state *ctx, size_t index, size_t source) {
   if (ret != CKB_SUCCESS) {
     return ret;
   }
+  blake2b_update(ctx, (char *)&len, sizeof(uint64_t));
   uint64_t offset = (len > ONE_BATCH_SIZE) ? ONE_BATCH_SIZE : len;
   blake2b_update(ctx, temp, offset);
   while (offset < len) {
