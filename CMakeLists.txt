@@ -4,7 +4,6 @@ project(ckb-miscellaneous-scripts C)
 set(CMAKE_C_STANDARD 11)
 
 add_definitions(-DUSE_SIM)
-add_definitions(-DENABLE_TEST)
 include_directories(build)
 include_directories(c)
 include_directories(deps)
