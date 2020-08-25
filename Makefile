@@ -18,7 +18,7 @@ PROTOCOL_URL := https://raw.githubusercontent.com/nervosnetwork/ckb/${PROTOCOL_V
 # 3. use -Os instead -O3
 CFLAGS_MBEDTLS := -fPIC -Os -fvisibility=hidden -I c -I deps/mbedtls/include -Wall -Werror -Wno-nonnull -Wno-nonnull-compare -Wno-unused-function -g
 LDFLAGS_MBEDTLS := -fdata-sections -ffunction-sections -Wl,--gc-sections
-
+PASSED_MBEDTLS_CFLAGS := -Os -fPIC -fdata-sections -ffunction-sections
 
 # docker pull nervos/ckb-riscv-gnu-toolchain:gnu-bionic-20191012
 BUILDER_DOCKER := nervos/ckb-riscv-gnu-toolchain@sha256:aae8a3f79705f67d505d1f1d5ddc694a4fd537ed1c7e9622420a470d59ba2ec3
@@ -80,7 +80,7 @@ build/or.h: c/or.mol ${PROTOCOL_SCHEMA}
 
 deps/mbedtls/library/libmbedcrypto.a:
 	cp deps/config.h.template deps/mbedtls/include/mbedtls
-	make -C deps/mbedtls/library CC=${CC} LD=${LD} CFLAGS="-Os -fPIC" libmbedcrypto.a libmbedx509.a
+	make -C deps/mbedtls/library CC=${CC} LD=${LD} CFLAGS="${PASSED_MBEDTLS_CFLAGS}" libmbedcrypto.a libmbedx509.a
 
 build/rsa_sighash_all: c/rsa_sighash_all.c deps/mbedtls/library/libmbedcrypto.a
 	$(CC) $(CFLAGS_MBEDTLS) $(LDFLAGS_MBEDTLS) -fPIC -fPIE -pie -Wl,--dynamic-list c/rsa.syms -o $@ $^
