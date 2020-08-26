@@ -75,7 +75,7 @@ build/or.h: c/or.mol ${PROTOCOL_SCHEMA}
 	${MOLC} --language c --schema-file $< > $@
 
 deps/mbedtls/library/libmbedcrypto.a:
-	cp deps/config.h.template deps/mbedtls/include/mbedtls
+	cp deps/config.h.template deps/mbedtls/include/mbedtls/config.h
 	cp -r deps/stdinc-used deps/mbedtls
 	make -C deps/mbedtls/library CC=${CC} LD=${LD} CFLAGS="${PASSED_MBEDTLS_CFLAGS}" libmbedcrypto.a
 
