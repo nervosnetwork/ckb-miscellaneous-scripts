@@ -4,20 +4,14 @@ project(ckb-miscellaneous-scripts C)
 set(CMAKE_C_STANDARD 11)
 
 add_definitions(-DUSE_SIM)
-include_directories(build)
-include_directories(c)
-include_directories(deps)
-include_directories(deps/secp256k1)
-include_directories(deps/secp256k1/src)
-include_directories(simulator)
-include_directories(deps/ckb-c-stdlib/molecule)
-include_directories(deps/ckb-c-stdlib)
-include_directories(deps/mbedtls/include)
 
-#link_directories(deps/secp256k1/.libs)
-#link_directories(deps/mbedtls/library)
-#link_libraries(libsecp256k1.a)
-#link_libraries(libmbedcrypto.a)
+add_compile_options(-nostdinc)
+add_compile_options(-nostdlib)
+add_compile_options(-Os)
+
+include_directories(simulator)
+include_directories(deps/mbedtls/include)
+include_directories(deps/stdinc-used)
 
 set(mbedtls_files
         deps/mbedtls/library/aes.c

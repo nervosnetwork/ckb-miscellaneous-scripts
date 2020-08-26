@@ -1,9 +1,10 @@
 // # rsa_sighash_all
 // same as secp256k1_blake2b_sighash_all_dual but with RSA (mbedtls)
-#include <stdlib.h>
 #include <string.h>
+
 #include "mbedtls/rsa.h"
 #include "mbedtls/md.h"
+#include "mbedtls/memory_buffer_alloc.h"
 #include "rsa_sighash_all.h"
 
 #define CKB_SUCCESS 0
@@ -59,6 +60,15 @@ __attribute__((visibility("default"))) int validate_signature(
     mbedtls_rsa_context rsa;
     unsigned char hash[32];
     RsaInfo *input_info = (RsaInfo *) signature_buffer;
+
+// when compiled with USE_SIM or RSA_RUN_TEST, the caller does this job
+#if !defined (USE_SIM) && !defined(RSA_RUN_TEST)
+    // use 6K memory, actually 3.4K can work. Leave more magine
+    const int alloc_buff_size = 1024*6;
+    unsigned char alloc_buff[alloc_buff_size];
+    mbedtls_memory_buffer_alloc_init(alloc_buff, alloc_buff_size);
+#endif
+
     mbedtls_rsa_init(&rsa, MBEDTLS_RSA_PKCS_V15, 0);
 
     CHECK_PARAM(signature_buffer != NULL, ERROR_RSA_INVALID_PARAM1);
@@ -133,6 +143,12 @@ int main(int argc, const char *argv[]) {
     size_t sig_len = strlen(sig);
     const char *sig_ptr = sig;
     const char *sig_end = sig + sig_len;
+
+    // use 10K memory
+    const int alloc_buff_size = 1024*10;
+    unsigned char alloc_buff[alloc_buff_size];
+    mbedtls_memory_buffer_alloc_init(alloc_buff, alloc_buff_size);
+
     while (1) {
         unsigned char c = 0;
         int consumed = scan_hex(sig_ptr, &c);
@@ -146,6 +162,7 @@ int main(int argc, const char *argv[]) {
             break;
     }
     mbedtls_mpi NN;
+    mbedtls_mpi_init(&NN);
     mbedtls_mpi_read_string(&NN, 16, N);
 
     RsaInfo info;
@@ -154,7 +171,8 @@ int main(int argc, const char *argv[]) {
     info.E = 65537; // hex format: "010001"
     info.sig_length = sig_len / 2;
 
-    info.N = malloc(info.key_size / 8);
+    uint8_t N_buff[info.key_size / 8];
+    info.N = N_buff;
     mbedtls_mpi_write_binary_le(&NN, info.N, info.key_size / 8);
 
     uint8_t output;
@@ -174,12 +192,15 @@ int main(int argc, const char *argv[]) {
     } else {
         mbedtls_printf("(failed case) validate signature failed:%d\n", result);
     }
-
-    free(info.N);
     if (result == 0 && result2 == ERROR_RSA_VERIFY_FAILED) {
         return 0;
     } else {
-        return 1;
+        if (result != 0)
+            return result;
+        else if (result2 != ERROR_RSA_VERIFY_FAILED)
+            return result2;
+        else
+            return 1;
     }
 }
 
