@@ -81,6 +81,8 @@ deps/mbedtls/library/libmbedcrypto.a:
 
 build/rsa_sighash_all: c/rsa_sighash_all.c deps/mbedtls/library/libmbedcrypto.a
 	$(CC) $(CFLAGS_MBEDTLS) $(LDFLAGS_MBEDTLS) -fPIC -fPIE -pie -Wl,--dynamic-list c/rsa.syms -o $@ $^
+	$(OBJCOPY) --only-keep-debug $@ $@.debug
+	$(OBJCOPY) --strip-debug --strip-all $@
 
 build/rsa_sighash_all_test: c/rsa_sighash_all.c deps/mbedtls/library/libmbedcrypto.a
 	# failed with riscv64-unknown-linux-gnu-gcc, try to uncomment the following line:
