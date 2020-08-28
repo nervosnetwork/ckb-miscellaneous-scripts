@@ -1,14 +1,7 @@
-//
-// Created by xujiandong on 2020/8/21.
-//
-
 #ifndef CKB_MISCELLANEOUS_SCRIPTS_RSA_SIGHASH_ALL_H
 #define CKB_MISCELLANEOUS_SCRIPTS_RSA_SIGHASH_ALL_H
 
-#include <string.h>
-
-#include "mbedtls/rsa.h"
-
+#include <stddef.h>
 /**
  * This structure contains the following information:
  * 1) RSA Key Size
@@ -42,7 +35,4 @@ typedef struct RsaInfo {
   // pointer to signature
   uint8_t *sig;
 } RsaInfo;
-
-int md_string(const mbedtls_md_info_t *md_info, const unsigned char *buf,
-              size_t n, unsigned char *output);
 #endif  // CKB_MISCELLANEOUS_SCRIPTS_RSA_SIGHASH_ALL_H

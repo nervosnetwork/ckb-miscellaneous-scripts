@@ -75,16 +75,16 @@ build/or.h: c/or.mol ${PROTOCOL_SCHEMA}
 	${MOLC} --language c --schema-file $< > $@
 
 deps/mbedtls/library/libmbedcrypto.a:
-	cp deps/config.h.template deps/mbedtls/include/mbedtls/config.h
+	cp deps/mbedtls-config-template.h deps/mbedtls/include/mbedtls/config.h
 	cp -r deps/stdinc-used deps/mbedtls
 	make -C deps/mbedtls/library CC=${CC} LD=${LD} CFLAGS="${PASSED_MBEDTLS_CFLAGS}" libmbedcrypto.a
 
 build/rsa_sighash_all: c/rsa_sighash_all.c deps/mbedtls/library/libmbedcrypto.a
-	$(CC) $(CFLAGS_MBEDTLS) $(LDFLAGS_MBEDTLS) -fPIC -fPIE -pie -Wl,--dynamic-list c/rsa.syms -o $@ $^
+	$(CC) $(CFLAGS_MBEDTLS) $(LDFLAGS_MBEDTLS) -D__SHARED_LIBRARY__ -fPIC -fPIE -pie -Wl,--dynamic-list c/rsa.syms -o $@ $^
 	$(OBJCOPY) --only-keep-debug $@ $@.debug
 	$(OBJCOPY) --strip-debug --strip-all $@
 
-build/rsa_sighash_all_test: c/rsa_sighash_all.c deps/mbedtls/library/libmbedcrypto.a
+simulator/build/rsa_sighash_all_test: simulator/rsa_sighash_all_usesim.c deps/mbedtls/library/libmbedcrypto.a
 	# failed with riscv64-unknown-linux-gnu-gcc, try to uncomment the following line:
 	# when run in CKB-VM, it returns: Err(OutOfBound)
 	#riscv64-unknown-linux-gnu-gcc -DRSA_RUN_TEST $(CFLAGS_MBEDTLS) -o $@ $^

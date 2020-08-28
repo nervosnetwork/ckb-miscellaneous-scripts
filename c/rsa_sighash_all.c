@@ -2,8 +2,11 @@
 // same as secp256k1_blake2b_sighash_all_dual but with RSA (mbedtls)
 #include "rsa_sighash_all.h"
 
+#include <string.h>
+
 #include "mbedtls/md.h"
 #include "mbedtls/memory_buffer_alloc.h"
+#include "mbedtls/rsa.h"
 
 #define CKB_SUCCESS 0
 #define ERROR_ARGUMENTS_LEN (-1)
@@ -14,6 +17,11 @@
 #define ERROR_RSA_MDSTRING_FAILED (-42)
 #define ERROR_RSA_VERIFY_FAILED (-43)
 #define ERROR_RSA_ONLY_INIT (-44)
+#define ERROR_RSA_INVALID_KEY_SIZE (-45)
+
+#define RSA_VALID_KEY_SIZE1 1024
+#define RSA_VALID_KEY_SIZE2 2048
+#define RSA_VALID_KEY_SIZE3 4096
 
 #define CHECK_PARAM(cond, code) \
   do {                          \
@@ -29,7 +37,8 @@
 #else
 #define mbedtls_printf(x, ...) (void)0
 #endif
-
+int md_string(const mbedtls_md_info_t *md_info, const unsigned char *buf,
+              size_t n, unsigned char *output);
 /**
  * Note: there is no prefilled data for RSA, it's only be used in secp256k1.
  * Always succeed.
@@ -39,6 +48,7 @@
  */
 __attribute__((visibility("default"))) int load_prefilled_data(void *data,
                                                                size_t *len) {
+  (void)data;
   *len = 0;
   return CKB_SUCCESS;
 }
@@ -60,22 +70,26 @@ __attribute__((visibility("default"))) int validate_signature(
     void *prefilled_data, const uint8_t *signature_buffer,
     size_t signature_size, const uint8_t *message_buffer, size_t message_size,
     uint8_t *output, size_t *output_len) {
+  (void)prefilled_data;
+  (void)output;
+  (void)output_len;
   int ret;
   int exit_code = ERROR_RSA_ONLY_INIT;
   mbedtls_rsa_context rsa;
   unsigned char hash[32];
   RsaInfo *input_info = (RsaInfo *)signature_buffer;
 
-// when compiled with USE_SIM or RSA_RUN_TEST, the caller does this job
-#if !defined(USE_SIM) && !defined(RSA_RUN_TEST)
-  // use 6K memory, actually 3.4K can work. Leave more magine
-  const int alloc_buff_size = 1024 * 6;
+  // for key size with 1024 bits, it uses 3444 bytes at most.
+  // for key size with 4096 bits, it uses 6316 bytes at most.
+  const int alloc_buff_size = 1024 * 7;
   unsigned char alloc_buff[alloc_buff_size];
   mbedtls_memory_buffer_alloc_init(alloc_buff, alloc_buff_size);
-#endif
 
   mbedtls_rsa_init(&rsa, MBEDTLS_RSA_PKCS_V15, 0);
-
+  CHECK_PARAM(input_info->key_size == RSA_VALID_KEY_SIZE1 ||
+                  input_info->key_size == RSA_VALID_KEY_SIZE2 ||
+                  input_info->key_size == RSA_VALID_KEY_SIZE3,
+              ERROR_RSA_INVALID_KEY_SIZE);
   CHECK_PARAM(signature_buffer != NULL, ERROR_RSA_INVALID_PARAM1);
   CHECK_PARAM(message_buffer != NULL, ERROR_RSA_INVALID_PARAM1);
   CHECK_PARAM(signature_size == sizeof(RsaInfo), ERROR_RSA_INVALID_PARAM2);
@@ -109,120 +123,6 @@ exit:
   mbedtls_rsa_free(&rsa);
   return exit_code;
 }
-
-#if defined(USE_SIM) || defined(RSA_RUN_TEST)
-
-static unsigned char get_hex(unsigned char c) {
-  if (c >= '0' && c <= '9')
-    return c - '0';
-  else if (c >= 'A' && c <= 'F')
-    return c - 'A' + 10;
-  else
-    return 0;
-}
-
-static int scan_hex(const char *s, unsigned char *value) {
-  if (s[0] == '\0' || s[1] == '\0') return 0;
-
-  unsigned char high_part = get_hex(s[0]);
-  unsigned char low_part = get_hex(s[1]);
-
-  *value = (high_part << 4) + low_part;
-  return 1;
-}
-
-void mbedtls_mpi_dump(const char *prefix, const mbedtls_mpi *X) {
-  size_t n;
-  char s[1024];
-  memset(s, 0, sizeof(s));
-
-  mbedtls_mpi_write_string(X, 16, s, sizeof(s) - 2, &n);
-  mbedtls_printf("%s%s\n", prefix, s);
-}
-
-int main(int argc, const char *argv[]) {
-  mbedtls_printf("Entering main()\n");
-  const char *sig =
-      "5AC84DEA32E756A5A1C287C5F4F1446F0606ACF8202D419570B2082EB8C439FB2157DF48"
-      "2546487B89FD6A8E00452431E57AD264C9D0B7F71182D250219CFCBA74D61AC01ACE4820"
-      "6DA7D124BE2E1DA77A9E1F4CF34F64CC4085DA79AE406A96C4F15467086839A79EAB691C"
-      "73D1EE248819479574028389376BD7F9FB4F5C9B";
-  const char *msg = "hello,CKB!";
-  unsigned char sig_buf[MBEDTLS_MPI_MAX_SIZE];
-  const char *N =
-      "A1D46FBA2318F8DCEF16C280948B1CF27966B9B47225ED2989F8D74B45BD36049C0AAB5A"
-      "D0FF003553BA843C8E12782FC5873BB89A3DC84B883D25666CD22BF3ACD5B675969F8BEB"
-      "FBCAC93FDD927C7442B178B10D1DFF9398E52316AAE0AF74E594650BDC3C670241D41868"
-      "4593CDA1A7B9DC4F20D2FDC6F66344074003E211";
-  // convert signature in plain string to binary
-  size_t i = 0;
-  size_t sig_len = strlen(sig);
-  const char *sig_ptr = sig;
-  const char *sig_end = sig + sig_len;
-
-  // use 10K memory
-  const int alloc_buff_size = 1024 * 10;
-  unsigned char alloc_buff[alloc_buff_size];
-  mbedtls_memory_buffer_alloc_init(alloc_buff, alloc_buff_size);
-
-  while (1) {
-    unsigned char c = 0;
-    int consumed = scan_hex(sig_ptr, &c);
-    if (consumed == 0) break;
-    if (i >= (int)sizeof(sig_buf)) break;
-    sig_buf[i++] = (unsigned char)c;
-    sig_ptr += consumed * 2;
-    if (sig_ptr >= sig_end) break;
-  }
-  mbedtls_mpi NN;
-  mbedtls_mpi_init(&NN);
-  mbedtls_mpi_read_string(&NN, 16, N);
-
-  RsaInfo info;
-  info.key_size = 1024;
-  info.sig = sig_buf;
-  info.E = 65537;  // hex format: "010001"
-  info.sig_length = sig_len / 2;
-
-  uint8_t N_buff[info.key_size / 8];
-  info.N = N_buff;
-  mbedtls_mpi_write_binary_le(&NN, info.N, info.key_size / 8);
-
-  uint8_t output;
-  size_t output_len;
-  int result = validate_signature(NULL, (const uint8_t *)&info, sizeof(info),
-                                  (const uint8_t *)msg, strlen(msg), &output,
-                                  &output_len);
-  if (result == 0) {
-    mbedtls_printf("validate signature passed\n");
-  } else {
-    mbedtls_printf("validate signature failed: %d\n", result);
-  }
-
-  msg = "hello, world!";
-  int result2 = validate_signature(NULL, (const uint8_t *)&info, sizeof(info),
-                                   (const uint8_t *)msg, strlen(msg), &output,
-                                   &output_len);
-  if (result2 == ERROR_RSA_VERIFY_FAILED) {
-    mbedtls_printf("validate signature passed\n");
-  } else {
-    mbedtls_printf("(failed case) validate signature failed:%d\n", result);
-  }
-  if (result == 0 && result2 == ERROR_RSA_VERIFY_FAILED) {
-    return 0;
-  } else {
-    if (result != 0)
-      return result;
-    else if (result2 != ERROR_RSA_VERIFY_FAILED)
-      return result2;
-    else
-      return 1;
-  }
-}
-
-#else
-int main(int argc, const char *argv[]) { return 0; }
-#endif
 
 int md_string(const mbedtls_md_info_t *md_info, const unsigned char *buf,
               size_t n, unsigned char *output) {

@@ -1,7 +1,3 @@
-//
-// Created by xujiandong on 2020/8/20.
-//
-
 // note, this macro must be same as in ckb_syscall.h
 #ifndef CKB_C_STDLIB_CKB_SYSCALLS_H_
 #define CKB_C_STDLIB_CKB_SYSCALLS_H_
