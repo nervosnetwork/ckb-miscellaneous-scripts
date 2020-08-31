@@ -14,7 +14,7 @@
 typedef struct RsaInfo {
   // RSA Key Size, in bits. For example, 1024, 2048.
   // Normally we use 1024; Choose 2048 for safety.
-  uint16_t key_size;
+  uint32_t key_size;
 
   // RSA public key, part E. It's normally very small, OK to use uint32_to hold
   // it. https://eprint.iacr.org/2008/510.pdf The choice e = 65537 = 2^16 + 1 is

@@ -12,9 +12,9 @@ PROTOCOL_SCHEMA := build/blockchain.mol
 PROTOCOL_VERSION := d75e4c56ffa40e17fd2fe477da3f98c5578edcd1
 PROTOCOL_URL := https://raw.githubusercontent.com/nervosnetwork/ckb/${PROTOCOL_VERSION}/util/types/schemas/blockchain.mol
 
-CFLAGS_MBEDTLS := -fPIC -Os -nostdinc -nostdlib -nostartfiles -fvisibility=hidden -fdata-sections -ffunction-sections -I deps/ckb-c-stdlib/libc -I deps/mbedtls/include -I deps/stdinc-used/limits -Wall -Werror -Wno-nonnull -Wno-nonnull-compare -Wno-unused-function -g
+CFLAGS_MBEDTLS := -fPIC -Os -nostdinc -nostdlib -nostartfiles -fvisibility=hidden -fdata-sections -ffunction-sections -I deps/ckb-c-stdlib/libc -I deps/mbedtls/include -Wall -Werror -Wno-nonnull -Wno-nonnull-compare -Wno-unused-function -g
 LDFLAGS_MBEDTLS := -Wl,-static -Wl,--gc-sections
-PASSED_MBEDTLS_CFLAGS := -Os -fPIC -nostdinc -nostdlib -I ../stdinc-used -fdata-sections -ffunction-sections
+PASSED_MBEDTLS_CFLAGS := -Os -fPIC -nostdinc -nostdlib -DCKB_DECLARATION_ONLY -I ../../ckb-c-stdlib/libc -fdata-sections -ffunction-sections
 
 # docker pull nervos/ckb-riscv-gnu-toolchain:gnu-bionic-20191012
 BUILDER_DOCKER := nervos/ckb-riscv-gnu-toolchain@sha256:aae8a3f79705f67d505d1f1d5ddc694a4fd537ed1c7e9622420a470d59ba2ec3
@@ -76,8 +76,13 @@ build/or.h: c/or.mol ${PROTOCOL_SCHEMA}
 
 deps/mbedtls/library/libmbedcrypto.a:
 	cp deps/mbedtls-config-template.h deps/mbedtls/include/mbedtls/config.h
-	cp -r deps/stdinc-used deps/mbedtls
 	make -C deps/mbedtls/library CC=${CC} LD=${LD} CFLAGS="${PASSED_MBEDTLS_CFLAGS}" libmbedcrypto.a
+
+build/impl.o: deps/ckb-c-stdlib/libc/src/impl.c
+	$(CC) -c $(filter-out -DCKB_DECLARATION_ONLY, $(CFLAGS_MBEDTLS)) $(LDFLAGS_MBEDTLS) -o $@ $^
+
+rsa_sighash_all-via-docker:
+	docker run --rm -v `pwd`:/code ${BUILDER_DOCKER} bash -c "cd /code && make build/rsa_sighash_all"
 
 build/rsa_sighash_all: c/rsa_sighash_all.c deps/mbedtls/library/libmbedcrypto.a
 	$(CC) $(CFLAGS_MBEDTLS) $(LDFLAGS_MBEDTLS) -D__SHARED_LIBRARY__ -fPIC -fPIE -pie -Wl,--dynamic-list c/rsa.syms -o $@ $^
@@ -85,15 +90,13 @@ build/rsa_sighash_all: c/rsa_sighash_all.c deps/mbedtls/library/libmbedcrypto.a
 	$(OBJCOPY) --strip-debug --strip-all $@
 
 simulator/build/rsa_sighash_all_test: simulator/rsa_sighash_all_usesim.c deps/mbedtls/library/libmbedcrypto.a
-	# failed with riscv64-unknown-linux-gnu-gcc, try to uncomment the following line:
-	# when run in CKB-VM, it returns: Err(OutOfBound)
-	#riscv64-unknown-linux-gnu-gcc -DRSA_RUN_TEST $(CFLAGS_MBEDTLS) -o $@ $^
 	riscv64-unknown-elf-gcc -DRSA_RUN_TEST $(CFLAGS_MBEDTLS) ${LDFLAGS_MBEDTLS} -o $@ $^
 
 rsa_sighash_clean:
 	make -C deps/mbedtls/library clean
 	rm -f build/rsa_sighash_all
 	rm -f build/rsa_sighash_all_test
+	rm -f build/*.o
 
 
 $(SECP256K1_SRC):

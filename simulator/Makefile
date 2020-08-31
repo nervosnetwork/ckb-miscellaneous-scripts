@@ -4,7 +4,7 @@ CFLAGS	?= -g
 WARNING_CFLAGS ?=  -Wall -Wextra
 LDFLAGS ?=
 
-LOCAL_CFLAGS = $(WARNING_CFLAGS) -I../deps/mbedtls/include -D_FILE_OFFSET_BITS=64 -I../deps/stdinc-used -DUSE_SIM
+LOCAL_CFLAGS = $(WARNING_CFLAGS) -I../deps/mbedtls/include -D_FILE_OFFSET_BITS=64 -I../deps/ckb-c-stdlib/libc -DUSE_SIM -DCKB_DECLARATION_ONLY
 LOCAL_LDFLAGS =
 
 OBJDIR = build
@@ -88,7 +88,7 @@ $(OBJDIR)/libmbedcrypto.a: $(OBJS_CRYPTO)
 	echo "  AR    $@"
 	$(AR) $(ARFLAGS) $@ $(OBJS_CRYPTO)
 
-$(OBJDIR)/rsa_sighash_all_usesim: ../c/rsa_sighash_all.c rsa_sighash_all_usesim.c $(OBJDIR)/libmbedcrypto.a
+$(OBJDIR)/rsa_sighash_all_usesim: ../deps/ckb-c-stdlib/libc/src/impl.c ../c/rsa_sighash_all.c rsa_sighash_all_usesim.c $(OBJDIR)/libmbedcrypto.a
 	$(CC) $(LOCAL_CFLAGS) $(CFLAGS) $(LOCAL_LDFLAGS) $(LDFLAGS) rsa_sighash_all_usesim.c $(OBJDIR)/libmbedcrypto.a -o $@
 
 run: $(OBJDIR)/rsa_sighash_all_usesim
