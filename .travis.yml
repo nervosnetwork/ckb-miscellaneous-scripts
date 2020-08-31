@@ -26,6 +26,7 @@ matrix:
         - make install-tools
         - make generate-protocol
         - make all-via-docker
+        - make -C simulator run
 
     - name: Format
       script:
