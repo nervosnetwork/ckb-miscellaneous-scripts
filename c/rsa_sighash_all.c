@@ -12,6 +12,9 @@
 #define ERROR_ARGUMENTS_LEN (-1)
 #define ERROR_ENCODING (-2)
 #define ERROR_SYSCALL (-3)
+#define ERROR_SCRIPT_TOO_LONG (-21)
+#define ERROR_WITNESS_SIZE (-22)
+#define ERROR_WRONG_SCRIPT_ARGS_LEN (-23)
 #define ERROR_RSA_INVALID_PARAM1 (-40)
 #define ERROR_RSA_INVALID_PARAM2 (-41)
 #define ERROR_RSA_MDSTRING_FAILED (-42)
@@ -22,6 +25,10 @@
 #define RSA_VALID_KEY_SIZE1 1024
 #define RSA_VALID_KEY_SIZE2 2048
 #define RSA_VALID_KEY_SIZE3 4096
+
+#define PUBLIC_KEY_SIZE1 (RSA_VALID_KEY_SIZE1/8+4)
+#define PUBLIC_KEY_SIZE2 (RSA_VALID_KEY_SIZE2/8+4)
+#define PUBLIC_KEY_SIZE3 (RSA_VALID_KEY_SIZE3/8+4)
 
 #define CHECK_PARAM(cond, code) \
   do {                          \
@@ -144,4 +151,213 @@ int md_string(const mbedtls_md_info_t *md_info, const unsigned char *buf,
 cleanup:
   mbedtls_md_free(&ctx);
   return ret;
+}
+
+#ifdef USE_SIM
+#include "ckb_syscall_sim.h"
+#include "ckb_consts.h"
+#else
+#include "ckb_syscalls.h"
+#endif
+#include "blake2b.h"
+#include "blockchain.h"
+
+#define BLAKE2B_BLOCK_SIZE 32
+#define BLAKE160_SIZE 20
+/* 32 KB */
+#define MAX_WITNESS_SIZE 32768
+#define SCRIPT_SIZE 32768
+#define TEMP_SIZE 32768
+#define ONE_BATCH_SIZE 32768
+
+
+
+int load_and_hash_witness(blake2b_state *ctx, size_t index, size_t source) {
+  uint8_t temp[ONE_BATCH_SIZE];
+  uint64_t len = ONE_BATCH_SIZE;
+  int ret = ckb_load_witness(temp, &len, 0, index, source);
+  if (ret != CKB_SUCCESS) {
+    return ret;
+  }
+  blake2b_update(ctx, (char *)&len, sizeof(uint64_t));
+  uint64_t offset = (len > ONE_BATCH_SIZE) ? ONE_BATCH_SIZE : len;
+  blake2b_update(ctx, temp, offset);
+  while (offset < len) {
+    uint64_t current_len = ONE_BATCH_SIZE;
+    ret = ckb_load_witness(temp, &current_len, offset, index, source);
+    if (ret != CKB_SUCCESS) {
+      return ret;
+    }
+    uint64_t current_read =
+        (current_len > ONE_BATCH_SIZE) ? ONE_BATCH_SIZE : current_len;
+    blake2b_update(ctx, temp, current_read);
+    offset += current_read;
+  }
+  return CKB_SUCCESS;
+}
+
+// Extract lock from WitnessArgs
+int extract_witness_lock(uint8_t *witness, uint64_t len,
+                         mol_seg_t *lock_bytes_seg) {
+  mol_seg_t witness_seg;
+  witness_seg.ptr = witness;
+  witness_seg.size = len;
+
+  if (MolReader_WitnessArgs_verify(&witness_seg, false) != MOL_OK) {
+    return ERROR_ENCODING;
+  }
+  mol_seg_t lock_seg = MolReader_WitnessArgs_get_lock(&witness_seg);
+
+  if (MolReader_BytesOpt_is_none(&lock_seg)) {
+    return ERROR_ENCODING;
+  }
+  *lock_bytes_seg = MolReader_Bytes_raw_bytes(&lock_seg);
+  return CKB_SUCCESS;
+}
+
+int load_public_key(unsigned char public_key[]) {
+  int ret;
+  uint64_t len = 0;
+
+  /* Load args */
+  unsigned char script[SCRIPT_SIZE];
+  len = SCRIPT_SIZE;
+  ret = ckb_load_script(script, &len, 0);
+  if (ret != CKB_SUCCESS) {
+    return ERROR_SYSCALL;
+  }
+  if (len > SCRIPT_SIZE) {
+    return ERROR_SCRIPT_TOO_LONG;
+  }
+  mol_seg_t script_seg;
+  script_seg.ptr = (uint8_t *)script;
+  script_seg.size = len;
+
+  if (MolReader_Script_verify(&script_seg, false) != MOL_OK) {
+    return ERROR_ENCODING;
+  }
+
+  mol_seg_t args_seg = MolReader_Script_get_args(&script_seg);
+  mol_seg_t args_bytes_seg = MolReader_Bytes_raw_bytes(&args_seg);
+  if (args_bytes_seg.size != PUBLIC_KEY_SIZE1) {
+    return ERROR_WRONG_SCRIPT_ARGS_LEN;
+  }
+  memcpy(public_key, args_bytes_seg.ptr, args_bytes_seg.size);
+  return CKB_SUCCESS;
+}
+
+// this method performs RSA signature verification: 1024-bits.
+// Note that this method is exposed for dynamic linking usage, so the
+// "current lock script" mentioned above, does not have to be this current
+// script code. It could be a different script code using this script via as a
+// library.
+__attribute__((visibility("default"))) int
+validate_rsa_sighash_all(void) {
+  int ret = ERROR_RSA_ONLY_INIT;
+  int signature_size = RSA_VALID_KEY_SIZE1/8; // 1024-bits
+
+  unsigned char public_key[PUBLIC_KEY_SIZE1] = {0};
+  unsigned char first_witness[TEMP_SIZE];
+  // secp256k1 use 65 bytes as signature but RSA actually need 128 bytes to 256 bytes, or even 512 bytes.
+  unsigned char signature[signature_size];
+  uint64_t len = 0;
+
+  // load public key
+  ret = load_public_key(public_key);
+  if (ret != CKB_SUCCESS)
+    return ret;
+
+  // Load witness of first input
+  uint64_t witness_len = MAX_WITNESS_SIZE;
+  ret = ckb_load_witness(first_witness, &witness_len, 0, 0, CKB_SOURCE_GROUP_INPUT);
+  if (ret != CKB_SUCCESS) {
+    return ERROR_SYSCALL;
+  }
+
+  if (witness_len > MAX_WITNESS_SIZE) {
+    return ERROR_WITNESS_SIZE;
+  }
+
+  // load signature
+  mol_seg_t lock_bytes_seg;
+  ret = extract_witness_lock(first_witness, witness_len, &lock_bytes_seg);
+  if (ret != 0) {
+    return ERROR_ENCODING;
+  }
+
+  // RSA signature size is different than secp256k1
+  if (lock_bytes_seg.size != signature_size) {
+    return ERROR_ARGUMENTS_LEN;
+  }
+  memcpy(signature, lock_bytes_seg.ptr, lock_bytes_seg.size);
+
+  // Load tx hash
+  unsigned char tx_hash[BLAKE2B_BLOCK_SIZE];
+  len = BLAKE2B_BLOCK_SIZE;
+  ret = ckb_load_tx_hash(tx_hash, &len, 0);
+  if (ret != CKB_SUCCESS) {
+    return ret;
+  }
+  if (len != BLAKE2B_BLOCK_SIZE) {
+    return ERROR_SYSCALL;
+  }
+
+  // Prepare sign message
+  // message = hash(tx_hash + first_witness_len + first_witness + other_witness(with length))
+  unsigned char message[BLAKE2B_BLOCK_SIZE];
+  blake2b_state blake2b_ctx;
+  blake2b_init(&blake2b_ctx, BLAKE2B_BLOCK_SIZE);
+  blake2b_update(&blake2b_ctx, tx_hash, BLAKE2B_BLOCK_SIZE);
+
+  // Clear lock field to zero. Note, the molecule header (4 byte with content SIGNATURE_SIZE) is not cleared.
+  // That means, SIGNATURE_SIZE should be always the same value.
+  memset((void *)lock_bytes_seg.ptr, 0, lock_bytes_seg.size);
+  // digest the first witness
+  blake2b_update(&blake2b_ctx, (char *)&witness_len, sizeof(witness_len));
+  blake2b_update(&blake2b_ctx, first_witness, witness_len);
+
+  // Digest same group witnesses
+  size_t i = 1;
+  while (1) {
+    ret = load_and_hash_witness(&blake2b_ctx, i, CKB_SOURCE_GROUP_INPUT);
+    if (ret == CKB_INDEX_OUT_OF_BOUND) {
+      break;
+    }
+    if (ret != CKB_SUCCESS) {
+      return ERROR_SYSCALL;
+    }
+    i += 1;
+  }
+  // Digest witnesses that not covered by inputs
+  i = ckb_calculate_inputs_len();
+  while (1) {
+    ret = load_and_hash_witness(&blake2b_ctx, i, CKB_SOURCE_INPUT);
+    if (ret == CKB_INDEX_OUT_OF_BOUND) {
+      break;
+    }
+    if (ret != CKB_SUCCESS) {
+      return ERROR_SYSCALL;
+    }
+    i += 1;
+  }
+  blake2b_final(&blake2b_ctx, message, BLAKE2B_BLOCK_SIZE);
+
+  // Signature Verification
+  RsaInfo info;
+  info.key_size = RSA_VALID_KEY_SIZE1;
+  info.E = *(uint32_t*)public_key;
+  info.N = &public_key[4];
+  info.sig_length = signature_size;
+  info.sig = signature;
+
+  int result = validate_signature(NULL, (const uint8_t *)&info, sizeof(info),
+                                  (const uint8_t *)message, BLAKE2B_BLOCK_SIZE,
+                                  0, 0);
+  if (result == 0) {
+    mbedtls_printf("validate signature passed\n");
+  } else {
+    mbedtls_printf("validate signature failed: %d\n", result);
+    return ERROR_RSA_VERIFY_FAILED;
+  }
+  return CKB_SUCCESS;
 }

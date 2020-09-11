@@ -143,7 +143,16 @@ int main(int argc, const char *argv[]) {
     exit_code = ERROR_RSA_VERIFY_FAILED;
     goto exit;
   }
+
+  int ret = validate_rsa_sighash_all();
+  if (ret != 0) {
+    mbedtls_printf("validate_rsa_sighash_all() failed\n");
+  } else {
+    mbedtls_printf("validate_rsa_sighash_all() passed\n");
+  }
+
   exit_code = CKB_SUCCESS;
+  mbedtls_printf("PASSED");
 exit:
   if (exit_code != CKB_SUCCESS) {
     mbedtls_printf("Failed, check log!");
