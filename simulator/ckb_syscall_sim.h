@@ -67,7 +67,7 @@ int ckb_load_witness(void* addr, uint64_t* len, size_t offset, size_t index, siz
 mol_seg_t build_args_bytes() {
   // public key, size: 4+128 = 132 bytes
   const int PUBLIC_KEY_SIZE = 132;
-  uint8_t public_key[PUBLIC_KEY_SIZE] = {1, 0, 1, 0, 0x56, 0x78};
+  uint8_t public_key[132] = {1, 0, 1, 0, 0x56, 0x78};
 
   mol_builder_t b;
   mol_seg_res_t res;
