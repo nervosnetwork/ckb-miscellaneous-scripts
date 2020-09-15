@@ -1,10 +1,10 @@
 
 
 CFLAGS	?= -g
-WARNING_CFLAGS ?=  -Wall -Wextra
+WARNING_CFLAGS ?=  -Wall -Wextra -Wno-unused-parameter
 LDFLAGS ?=
 
-LOCAL_CFLAGS = $(WARNING_CFLAGS) -I../deps/mbedtls/include -D_FILE_OFFSET_BITS=64 -I../deps/ckb-c-stdlib/libc -DUSE_SIM -DCKB_DECLARATION_ONLY
+LOCAL_CFLAGS = $(WARNING_CFLAGS) -I../deps/mbedtls/include -D_FILE_OFFSET_BITS=64 -I../deps/ckb-c-stdlib/libc -I../deps/ckb-c-stdlib -I../deps/ckb-c-stdlib/molecule -I. -DUSE_SIM -DCKB_DECLARATION_ONLY
 LOCAL_LDFLAGS =
 
 OBJDIR = build

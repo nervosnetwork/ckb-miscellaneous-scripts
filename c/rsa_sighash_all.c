@@ -26,9 +26,9 @@
 #define RSA_VALID_KEY_SIZE2 2048
 #define RSA_VALID_KEY_SIZE3 4096
 
-#define PUBLIC_KEY_SIZE1 (RSA_VALID_KEY_SIZE1/8+4)
-#define PUBLIC_KEY_SIZE2 (RSA_VALID_KEY_SIZE2/8+4)
-#define PUBLIC_KEY_SIZE3 (RSA_VALID_KEY_SIZE3/8+4)
+#define PUBLIC_KEY_SIZE1 (RSA_VALID_KEY_SIZE1 / 8 + 4)
+#define PUBLIC_KEY_SIZE2 (RSA_VALID_KEY_SIZE2 / 8 + 4)
+#define PUBLIC_KEY_SIZE3 (RSA_VALID_KEY_SIZE3 / 8 + 4)
 
 #define CHECK_PARAM(cond, code) \
   do {                          \
@@ -153,9 +153,13 @@ cleanup:
   return ret;
 }
 
+/*
+ * The following code is a demo for RSA verification.
+ * It mimic the behavior of validate_secp256k1_blake2b_sighash_all.
+ */
 #ifdef USE_SIM
-#include "ckb_syscall_sim.h"
 #include "ckb_consts.h"
+#include "ckb_syscall_sim.h"
 #else
 #include "ckb_syscalls.h"
 #endif
@@ -169,8 +173,6 @@ cleanup:
 #define SCRIPT_SIZE 32768
 #define TEMP_SIZE 32768
 #define ONE_BATCH_SIZE 32768
-
-
 
 int load_and_hash_witness(blake2b_state *ctx, size_t index, size_t source) {
   uint8_t temp[ONE_BATCH_SIZE];
@@ -251,25 +253,25 @@ int load_public_key(unsigned char public_key[]) {
 // "current lock script" mentioned above, does not have to be this current
 // script code. It could be a different script code using this script via as a
 // library.
-__attribute__((visibility("default"))) int
-validate_rsa_sighash_all(void) {
+__attribute__((visibility("default"))) int validate_rsa_sighash_all(void) {
   int ret = ERROR_RSA_ONLY_INIT;
-  int signature_size = RSA_VALID_KEY_SIZE1/8; // 1024-bits
+  uint32_t signature_size = RSA_VALID_KEY_SIZE1 / 8;  // 1024-bits
 
   unsigned char public_key[PUBLIC_KEY_SIZE1] = {0};
   unsigned char first_witness[TEMP_SIZE];
-  // secp256k1 use 65 bytes as signature but RSA actually need 128 bytes to 256 bytes, or even 512 bytes.
+  // secp256k1 use 65 bytes as signature but RSA actually need 128 bytes to 256
+  // bytes, or even 512 bytes.
   unsigned char signature[signature_size];
   uint64_t len = 0;
 
   // load public key
   ret = load_public_key(public_key);
-  if (ret != CKB_SUCCESS)
-    return ret;
+  if (ret != CKB_SUCCESS) return ret;
 
   // Load witness of first input
   uint64_t witness_len = MAX_WITNESS_SIZE;
-  ret = ckb_load_witness(first_witness, &witness_len, 0, 0, CKB_SOURCE_GROUP_INPUT);
+  ret = ckb_load_witness(first_witness, &witness_len, 0, 0,
+                         CKB_SOURCE_GROUP_INPUT);
   if (ret != CKB_SUCCESS) {
     return ERROR_SYSCALL;
   }
@@ -303,14 +305,16 @@ validate_rsa_sighash_all(void) {
   }
 
   // Prepare sign message
-  // message = hash(tx_hash + first_witness_len + first_witness + other_witness(with length))
+  // message = hash(tx_hash + first_witness_len + first_witness +
+  // other_witness(with length))
   unsigned char message[BLAKE2B_BLOCK_SIZE];
   blake2b_state blake2b_ctx;
   blake2b_init(&blake2b_ctx, BLAKE2B_BLOCK_SIZE);
   blake2b_update(&blake2b_ctx, tx_hash, BLAKE2B_BLOCK_SIZE);
 
-  // Clear lock field to zero. Note, the molecule header (4 byte with content SIGNATURE_SIZE) is not cleared.
-  // That means, SIGNATURE_SIZE should be always the same value.
+  // Clear lock field to zero. Note, the molecule header (4 byte with content
+  // SIGNATURE_SIZE) is not cleared. That means, SIGNATURE_SIZE should be always
+  // the same value.
   memset((void *)lock_bytes_seg.ptr, 0, lock_bytes_seg.size);
   // digest the first witness
   blake2b_update(&blake2b_ctx, (char *)&witness_len, sizeof(witness_len));
@@ -345,14 +349,14 @@ validate_rsa_sighash_all(void) {
   // Signature Verification
   RsaInfo info;
   info.key_size = RSA_VALID_KEY_SIZE1;
-  info.E = *(uint32_t*)public_key;
+  info.E = *(uint32_t *)public_key;
   info.N = &public_key[4];
   info.sig_length = signature_size;
   info.sig = signature;
 
-  int result = validate_signature(NULL, (const uint8_t *)&info, sizeof(info),
-                                  (const uint8_t *)message, BLAKE2B_BLOCK_SIZE,
-                                  0, 0);
+  int result =
+      validate_signature(NULL, (const uint8_t *)&info, sizeof(info),
+                         (const uint8_t *)message, BLAKE2B_BLOCK_SIZE, 0, 0);
   if (result == 0) {
     mbedtls_printf("validate signature passed\n");
   } else {
