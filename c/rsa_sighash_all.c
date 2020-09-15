@@ -38,7 +38,7 @@
     }                           \
   } while (0)
 
-#if defined(USE_SIM)
+#if defined(CKB_USE_SIM)
 #include <stdio.h>
 #define mbedtls_printf printf
 #else
@@ -154,10 +154,10 @@ cleanup:
 }
 
 /*
- * The following code is a demo for RSA verification.
+ * The following code is to add RSA "validate all" method.
  * It mimic the behavior of validate_secp256k1_blake2b_sighash_all.
  */
-#ifdef USE_SIM
+#ifdef CKB_USE_SIM
 #include "ckb_consts.h"
 #include "ckb_syscall_sim.h"
 #else
