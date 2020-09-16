@@ -79,20 +79,19 @@ int main(int argc, const char *argv[]) {
   NN.n = limbs_count;
   mbedtls_mpi_read_string(&NN, 16, N);
 
-  RsaInfo info;
-  info.key_size = 1024;
-  info.sig = sig_buf;
-  info.E = 65537;  // hex format: "010001"
-  info.sig_length = sig_len / 2;
+  int key_size = 1024;
+  uint32_t length = calculate_rsa_info_length(key_size);
+  uint8_t info_buff[length];
+  RsaInfo* info = (RsaInfo*)info_buff;
+  info->key_size = 1024;
+  info->E = 65537;  // hex format: "010001"
+  mbedtls_mpi_write_binary_le(&NN, info->N, key_size / 8);
+  memcpy(get_rsa_signature(info), sig_buf, key_size/8);
 
-  uint8_t N_buff[info.key_size / 8];
-  info.N = N_buff;
-  mbedtls_mpi_write_binary_le(&NN, info.N, info.key_size / 8);
-
-  uint8_t output;
-  size_t output_len;
-  int result = validate_signature(NULL, (const uint8_t *)&info, sizeof(info),
-                                  (const uint8_t *)msg, strlen(msg), &output,
+  uint8_t output[32];
+  size_t output_len = 32;
+  int result = validate_signature(NULL, (const uint8_t *)info, length,
+                                  (const uint8_t *)msg, strlen(msg), output,
                                   &output_len);
   if (result == 0) {
     mbedtls_printf("validate signature passed\n");
@@ -103,8 +102,8 @@ int main(int argc, const char *argv[]) {
   }
 
   msg = "hello, world!";
-  int result2 = validate_signature(NULL, (const uint8_t *)&info, sizeof(info),
-                                   (const uint8_t *)msg, strlen(msg), &output,
+  int result2 = validate_signature(NULL, (const uint8_t *)info, length,
+                                   (const uint8_t *)msg, strlen(msg), output,
                                    &output_len);
   if (result2 == ERROR_RSA_VERIFY_FAILED) {
     mbedtls_printf("validate signature passed\n");
@@ -114,37 +113,55 @@ int main(int argc, const char *argv[]) {
     goto exit;
   }
 
-  info.key_size = 2048;
-  unsigned char N2048[2048 / 8];
-  dup_buffer(N_buff, 1024 / 8, N2048, 2);
-  info.N = N2048;
-  int result3 = validate_signature(NULL, (const uint8_t *)&info, sizeof(info),
-                                   (const uint8_t *)msg, strlen(msg), &output,
-                                   &output_len);
-  if (result3 == ERROR_RSA_VERIFY_FAILED) {
-    mbedtls_printf("validate signature (2048-bit) passed\n");
-  } else {
-    mbedtls_printf("validate signature (2048-bit) failed: %d\n", result);
-    exit_code = ERROR_RSA_VERIFY_FAILED;
-    goto exit;
+  {
+    int key_size = 2048;
+    uint32_t length = calculate_rsa_info_length(key_size);
+    uint8_t info_buff[length];
+    RsaInfo *info = (RsaInfo*)info_buff;
+    info->key_size = key_size;
+    info->E = 65537;  // hex format: "010001"
+    mbedtls_mpi_write_binary_le(&NN, info->N, info->key_size / 8);
+    mbedtls_mpi_write_binary_le(&NN, info->N+key_size/8, info->key_size / 8);
+    memcpy(get_rsa_signature(info), sig_buf, key_size/8);
+    memcpy(get_rsa_signature(info)+key_size/8, sig_buf, key_size/8);
+
+    int result3 = validate_signature(NULL, (const uint8_t *) info, length,
+                                     (const uint8_t *) msg, strlen(msg), output,
+                                     &output_len);
+    if (result3 == ERROR_RSA_VERIFY_FAILED) {
+      mbedtls_printf("validate signature (2048-bit) passed\n");
+    } else {
+      mbedtls_printf("validate signature (2048-bit) failed: %d\n", result);
+      exit_code = ERROR_RSA_VERIFY_FAILED;
+      goto exit;
+    }
+  }
+  {
+    int key_size = 4096;
+    uint32_t length = calculate_rsa_info_length(key_size);
+    uint8_t info_buff[length];
+    RsaInfo *info = (RsaInfo*)info_buff;
+    info->key_size = key_size;
+    info->E = 65537;  // hex format: "010001"
+    mbedtls_mpi_write_binary_le(&NN, info->N, key_size / 8);
+    mbedtls_mpi_write_binary_le(&NN, info->N+key_size/8, key_size / 8);
+    memcpy(get_rsa_signature(info), sig_buf, key_size/8);
+    memcpy(get_rsa_signature(info)+key_size/8, sig_buf, key_size/8);
+
+    int result4 = validate_signature(NULL, (const uint8_t *) info, length,
+                                     (const uint8_t *) msg, strlen(msg), output,
+                                     &output_len);
+    if (result4 == ERROR_RSA_VERIFY_FAILED) {
+      mbedtls_printf("validate signature (4096-bit) passed\n");
+    } else {
+      mbedtls_printf("validate signature (4096-bit) failed: %d\n", result);
+      exit_code = ERROR_RSA_VERIFY_FAILED;
+      goto exit;
+    }
   }
 
-  info.key_size = 4096;
-  unsigned char N4096[4096 / 8];
-  dup_buffer(N_buff, 1024 / 8, N4096, 4);
-  info.N = N4096;
-  int result4 = validate_signature(NULL, (const uint8_t *)&info, sizeof(info),
-                                   (const uint8_t *)msg, strlen(msg), &output,
-                                   &output_len);
-  if (result4 == ERROR_RSA_VERIFY_FAILED) {
-    mbedtls_printf("validate signature (4096-bit) passed\n");
-  } else {
-    mbedtls_printf("validate signature (4096-bit) failed: %d\n", result);
-    exit_code = ERROR_RSA_VERIFY_FAILED;
-    goto exit;
-  }
-
-  int ret = validate_rsa_sighash_all();
+  unsigned char pub_key_hash[BLAKE2B_BLOCK_SIZE];
+  int ret = validate_rsa_sighash_all(pub_key_hash);
   if (ret != 0) {
     mbedtls_printf("validate_rsa_sighash_all() failed\n");
   } else {
