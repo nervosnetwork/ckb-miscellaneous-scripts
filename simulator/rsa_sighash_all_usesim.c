@@ -88,8 +88,8 @@ int main(int argc, const char *argv[]) {
   mbedtls_mpi_write_binary_le(&NN, info->N, key_size / 8);
   memcpy(get_rsa_signature(info), sig_buf, key_size/8);
 
-  uint8_t output[32];
-  size_t output_len = 32;
+  uint8_t output[BLAKE160_SIZE];
+  size_t output_len = BLAKE160_SIZE;
   int result = validate_signature(NULL, (const uint8_t *)info, length,
                                   (const uint8_t *)msg, strlen(msg), output,
                                   &output_len);
@@ -160,7 +160,7 @@ int main(int argc, const char *argv[]) {
     }
   }
 
-  unsigned char pub_key_hash[BLAKE2B_BLOCK_SIZE];
+  unsigned char pub_key_hash[BLAKE160_SIZE];
   int ret = validate_rsa_sighash_all(pub_key_hash);
   if (ret != 0) {
     mbedtls_printf("validate_rsa_sighash_all() failed\n");

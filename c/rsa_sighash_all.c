@@ -114,7 +114,7 @@ __attribute__((visibility("default"))) int validate_signature(
   CHECK_PARAM(signature_buffer != NULL, ERROR_RSA_INVALID_PARAM1);
   CHECK_PARAM(message_buffer != NULL, ERROR_RSA_INVALID_PARAM1);
   CHECK_PARAM(signature_size == (size_t)calculate_rsa_info_length(input_info->key_size), ERROR_RSA_INVALID_PARAM2);
-  CHECK_PARAM(*output_len >= BLAKE2B_BLOCK_SIZE, ERROR_RSA_INVALID_BLADE2B_SIZE);
+  CHECK_PARAM(*output_len >= BLAKE160_SIZE, ERROR_RSA_INVALID_BLADE2B_SIZE);
 
   mbedtls_mpi_read_binary_le(&rsa.E, (const unsigned char *)&input_info->E,
                              sizeof(uint32_t));
@@ -371,7 +371,7 @@ __attribute__((visibility("default"))) int validate_rsa_sighash_all(uint8_t *out
   }
   blake2b_final(&blake2b_ctx, message, BLAKE2B_BLOCK_SIZE);
 
-  size_t pub_key_hash_size = BLAKE2B_BLOCK_SIZE;
+  size_t pub_key_hash_size = BLAKE160_SIZE;
   int result =
       validate_signature(NULL, (const uint8_t *)rsa_info, info_len,
                          (const uint8_t *)message, BLAKE2B_BLOCK_SIZE, output_public_key_hash, &pub_key_hash_size);
