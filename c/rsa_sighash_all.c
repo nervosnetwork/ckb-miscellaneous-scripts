@@ -4,9 +4,10 @@
 //#include <stdio.h>
 
 #include "rsa_sighash_all.h"
-#include <string.h>
-#include "blake2b.h"
 
+#include <string.h>
+
+#include "blake2b.h"
 #include "mbedtls/md.h"
 #include "mbedtls/memory_buffer_alloc.h"
 #include "mbedtls/rsa.h"
@@ -67,14 +68,12 @@ __attribute__((visibility("default"))) int load_prefilled_data(void *data,
   return CKB_SUCCESS;
 }
 
-uint8_t* get_rsa_signature(RsaInfo* info) {
-  int length = info->key_size/8;
-  return (uint8_t*)&info->N[length];
+uint8_t *get_rsa_signature(RsaInfo *info) {
+  int length = info->key_size / 8;
+  return (uint8_t *)&info->N[length];
 }
 
-uint32_t calculate_rsa_info_length(int key_size) {
-  return 8+key_size/4;
-}
+uint32_t calculate_rsa_info_length(int key_size) { return 8 + key_size / 4; }
 
 /**
  *
@@ -113,13 +112,14 @@ __attribute__((visibility("default"))) int validate_signature(
               ERROR_RSA_INVALID_KEY_SIZE);
   CHECK_PARAM(signature_buffer != NULL, ERROR_RSA_INVALID_PARAM1);
   CHECK_PARAM(message_buffer != NULL, ERROR_RSA_INVALID_PARAM1);
-  CHECK_PARAM(signature_size == (size_t)calculate_rsa_info_length(input_info->key_size), ERROR_RSA_INVALID_PARAM2);
+  CHECK_PARAM(
+      signature_size == (size_t)calculate_rsa_info_length(input_info->key_size),
+      ERROR_RSA_INVALID_PARAM2);
   CHECK_PARAM(*output_len >= BLAKE160_SIZE, ERROR_RSA_INVALID_BLADE2B_SIZE);
 
   mbedtls_mpi_read_binary_le(&rsa.E, (const unsigned char *)&input_info->E,
                              sizeof(uint32_t));
-  mbedtls_mpi_read_binary_le(&rsa.N, input_info->N,
-                             input_info->key_size / 8);
+  mbedtls_mpi_read_binary_le(&rsa.N, input_info->N, input_info->key_size / 8);
   rsa.len = (mbedtls_mpi_bitlen(&rsa.N) + 7) >> 3;
 
   ret = md_string(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), message_buffer,
@@ -131,7 +131,8 @@ __attribute__((visibility("default"))) int validate_signature(
   }
   // note: hashlen = 20 is used for MD5, we can ignore it here for SHA256.
   ret = mbedtls_rsa_pkcs1_verify(&rsa, NULL, NULL, MBEDTLS_RSA_PUBLIC,
-                                 MBEDTLS_MD_SHA256, 20, hash, get_rsa_signature(input_info));
+                                 MBEDTLS_MD_SHA256, 20, hash,
+                                 get_rsa_signature(input_info));
   if (ret != 0) {
     mbedtls_printf("mbedtls_rsa_pkcs1_verify returned -0x%0x\n",
                    (unsigned int)-ret);
@@ -143,7 +144,7 @@ __attribute__((visibility("default"))) int validate_signature(
   blake2b_init(&blake2b_ctx, BLAKE2B_BLOCK_SIZE);
   // pub key hash = blake2b(key size + E + N)
   // here pub key = E+N
-  blake2b_update(&blake2b_ctx, input_info, 8+input_info->key_size/8);
+  blake2b_update(&blake2b_ctx, input_info, 8 + input_info->key_size / 8);
   unsigned char blake2b_hash[BLAKE2B_BLOCK_SIZE] = {0};
   blake2b_final(&blake2b_ctx, blake2b_hash, BLAKE2B_BLOCK_SIZE);
 
@@ -284,7 +285,8 @@ int load_public_key_hash(unsigned char *public_key) {
 // "current lock script" mentioned above, does not have to be this current
 // script code. It could be a different script code using this script via as a
 // library.
-__attribute__((visibility("default"))) int validate_rsa_sighash_all(uint8_t *output_public_key_hash) {
+__attribute__((visibility("default"))) int validate_rsa_sighash_all(
+    uint8_t *output_public_key_hash) {
   int ret = ERROR_RSA_ONLY_INIT;
   unsigned char first_witness[TEMP_SIZE];
   uint64_t len = 0;
@@ -308,13 +310,14 @@ __attribute__((visibility("default"))) int validate_rsa_sighash_all(uint8_t *out
     return ERROR_ENCODING;
   }
 
-  uint32_t key_size = ((RsaInfo*)lock_bytes_seg.ptr)->key_size;
+  uint32_t key_size = ((RsaInfo *)lock_bytes_seg.ptr)->key_size;
   uint32_t info_len = calculate_rsa_info_length(key_size);
   if (lock_bytes_seg.size != info_len) {
     return ERROR_ARGUMENTS_LEN;
   }
   // RSA signature size is different than secp256k1
-  // secp256k1 use 65 bytes as signature but RSA actually has dynamic size depending on key size.
+  // secp256k1 use 65 bytes as signature but RSA actually has dynamic size
+  // depending on key size.
   unsigned char rsa_info[info_len];
   memcpy(rsa_info, lock_bytes_seg.ptr, lock_bytes_seg.size);
 
@@ -372,9 +375,9 @@ __attribute__((visibility("default"))) int validate_rsa_sighash_all(uint8_t *out
   blake2b_final(&blake2b_ctx, message, BLAKE2B_BLOCK_SIZE);
 
   size_t pub_key_hash_size = BLAKE160_SIZE;
-  int result =
-      validate_signature(NULL, (const uint8_t *)rsa_info, info_len,
-                         (const uint8_t *)message, BLAKE2B_BLOCK_SIZE, output_public_key_hash, &pub_key_hash_size);
+  int result = validate_signature(NULL, (const uint8_t *)rsa_info, info_len,
+                                  (const uint8_t *)message, BLAKE2B_BLOCK_SIZE,
+                                  output_public_key_hash, &pub_key_hash_size);
   if (result == 0) {
     mbedtls_printf("validate signature passed\n");
   } else {

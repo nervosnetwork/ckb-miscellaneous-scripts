@@ -11,13 +11,15 @@
  * 2) RSA Public Key
  * 3) RSA Signature data
  *
-+---------+----------+---------------------------------+------------------------------------+
-| key_size|   E      |  N (key_size/8 bytes)           | RSA Signature (key_size/8 bytes)   |
-+--------------------+---------------------------------+------------------------------------+
-The key_size, N both occupy 4 bytes, in little endian (uint32_t).
+---------------------------------------------------------------------------
+| key_size | E |  N (key_size/8 bytes) | RSA Signature (key_size/8 bytes) |
+---------------------------------------------------------------------------
+The key_size, E both occupy 4 bytes, in little endian (uint32_t).
 So the total length in byte is: 4 + 4 + key_size/8 + key_size/8.
 
-The public key hash is calculated : blake2b(key_size + E + N), dropping RSA signature part.
+The public key hash is calculated by: blake160(key_size + E + N), Note: RSA
+signature part is dropped. Here function blake160 returns the first 20 bytes of
+blake2b result.
 */
 typedef struct RsaInfo {
   // RSA Key Size, in bits. For example, 1024, 2048, 4096
