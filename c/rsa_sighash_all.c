@@ -99,9 +99,10 @@ __attribute__((visibility("default"))) int validate_signature(
   unsigned char hash[32];
   RsaInfo *input_info = (RsaInfo *)signature_buffer;
 
-  // for key size with 1024 bits, it uses 3444 bytes at most.
-  // for key size with 4096 bits, it uses 6316 bytes at most.
-  const int alloc_buff_size = 1024 * 7;
+  // for key size with 1024 and 2048 bits, it uses up to 7K bytes.
+  int alloc_buff_size = 1024 * 7;
+  // for key size with 4096 bits, it uses 12K bytes at most.
+  if (input_info->key_size > 2048) alloc_buff_size = 1024 * 12;
   unsigned char alloc_buff[alloc_buff_size];
   mbedtls_memory_buffer_alloc_init(alloc_buff, alloc_buff_size);
 
