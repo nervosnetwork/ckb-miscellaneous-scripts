@@ -277,15 +277,18 @@ int load_public_key_hash(unsigned char *public_key) {
   return CKB_SUCCESS;
 }
 
-// this method performs RSA signature verification: 1024-bits.
-// Given a blake160 format public key hash, this method performs signature
-// verifications on input cells using current lock script hash. It then asserts
-// that the derive public key hash from the signature matches the given public
-// key hash.
-// Note that this method is exposed for dynamic linking usage, so the
-// "current lock script" mentioned above, does not have to be this current
-// script code. It could be a different script code using this script via as a
-// library.
+// this method performs RSA signature verification: it supports variable key
+// sizes: 1024, 2048 and 4096.
+//
+// Given a blake160 format public key hash, this
+// method performs signature verifications on input cells using current lock
+// script hash. It then asserts that the derive public key hash from the
+// signature matches the given public key hash.
+//
+// Note that this method is exposed
+// for dynamic linking usage, so the "current lock script" mentioned above, does
+// not have to be this current script code. It could be a different script code
+// using this script via as a library.
 __attribute__((visibility("default"))) int validate_rsa_sighash_all(
     uint8_t *output_public_key_hash) {
   int ret = ERROR_RSA_ONLY_INIT;
