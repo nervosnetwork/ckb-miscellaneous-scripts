@@ -6,6 +6,12 @@
 #include <blockchain.h>
 #include <assert.h>
 
+#ifndef RSA_VALID_KEY_SIZE1
+#define RSA_VALID_KEY_SIZE1 1024
+#define PUBLIC_KEY_SIZE1 (RSA_VALID_KEY_SIZE1 / 8 + 4)
+#endif
+
+
 static inline long __internal_syscall(long n, long _a0, long _a1, long _a2,
                                       long _a3, long _a4, long _a5) {
     return 0;
