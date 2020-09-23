@@ -181,7 +181,9 @@ int main() {
   uint8_t hash_type = args_bytes_seg.ptr[32];
   uint8_t identity_size = args_bytes_seg.ptr[33];
   uint16_t aggregator_number = *((uint16_t *)(&args_bytes_seg.ptr[34]));
-  uint32_t block_interval_seconds = *((uint32_t *)(&args_bytes_seg.ptr[36]));
+  uint32_t block_intervals = *((uint32_t *)(&args_bytes_seg.ptr[36]));
+  int interval_uses_seconds = (block_intervals & 0x80000000) != 0;
+  block_intervals &= 0x7FFFFFFF;
   uint32_t data_info_offset = *((uint32_t *)(&args_bytes_seg.ptr[40]));
   if (args_bytes_seg.size != 44 + identity_size * aggregator_number) {
     DEBUG("Script args has invalid length!");
@@ -229,7 +231,7 @@ int main() {
     DEBUG("Invalid input block info!");
     return ERROR_ENCODING;
   }
-  uint64_t last_timestamp = *((uint64_t *)last_block_info);
+  uint64_t last_time = *((uint64_t *)last_block_info);
   uint16_t last_aggregator_index = *((uint16_t *)(&last_block_info[8]));
 
   uint8_t current_block_info[10];
@@ -262,21 +264,28 @@ int main() {
     DEBUG("Invalid loading since!");
     return ERROR_ENCODING;
   }
-  if (since >> 56 != 0x40) {
-    DEBUG("PoA requires absolute timestamp since!");
-    return ERROR_ENCODING;
+  if (interval_uses_seconds) {
+    if (since >> 56 != 0x40) {
+      DEBUG("PoA requires absolute timestamp since!");
+      return ERROR_ENCODING;
+    }
+  } else {
+    if (since >> 56 != 0) {
+      DEBUG("PoA requires absolute block number since!");
+      return ERROR_ENCODING;
+    }
   }
   since &= 0x00FFFFFFFFFFFFFF;
   uint64_t duration =
       ((uint64_t)current_aggregator_index + (uint64_t)aggregator_number -
        (uint64_t)last_aggregator_index) *
-      ((uint64_t)block_interval_seconds);
-  if (since < duration + last_timestamp) {
-    DEBUG("Invalid timestamp!");
+      ((uint64_t)block_intervals);
+  if (since < duration + last_time) {
+    DEBUG("Invalid time!");
     return ERROR_ENCODING;
   }
   if (current_timestamp != since) {
-    DEBUG("Invalid current timestamp!");
+    DEBUG("Invalid current time!");
     return ERROR_ENCODING;
   }
 
