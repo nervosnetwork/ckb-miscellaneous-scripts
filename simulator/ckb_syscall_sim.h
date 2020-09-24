@@ -142,5 +142,11 @@ int ckb_calculate_inputs_len() {
   return 0;
 }
 
+int ckb_load_cell_data(void* addr, uint64_t* len, size_t offset, size_t index,
+                       size_t source) {
+  return 0;
+}
+
+
 #endif
 
