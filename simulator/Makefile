@@ -80,7 +80,7 @@ OBJS_CRYPTO= \
 
 .PHONY: all clean
 
-all: $(OBJDIR)/libmbedcrypto.a $(OBJDIR)/rsa_sighash_all_usesim
+all: $(OBJDIR)/libmbedcrypto.a $(OBJDIR)/rsa_sighash_all_usesim $(OBJDIR)/aggregated_simple_udt_usesim
 	
 
 # crypto
@@ -96,6 +96,12 @@ run: $(OBJDIR)/rsa_sighash_all_usesim
 
 $(OBJDIR)/%.o: $(SRCDIR)/%.c
 	$(CC) $(LOCAL_CFLAGS) $(CFLAGS) -o $@ -c $<
+
+$(OBJDIR)/aggregated_simple_udt_usesim: aggregated_simple_udt_usesim.c
+	$(CC) $(LOCAL_CFLAGS) $(CFLAGS) $(LOCAL_LDFLAGS) $(LDFLAGS) -o $@ $<
+
+run_asudt: $(OBJDIR)/aggregated_simple_udt_usesim
+	$(OBJDIR)/aggregated_simple_udt_usesim
 
 clean:
 	rm -f ./build/* || exit 0
