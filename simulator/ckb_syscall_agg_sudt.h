@@ -116,8 +116,11 @@ int ckb_checked_load_cell_by_field(void* addr, uint64_t* len, size_t offset,
 
 
 #define MIN(a, b) ((a) > (b) ? (b) : (a))
+// can't bigger than block
+// around 600K
+#define MAX_CELL_SIZE 655350
 
-static uint8_t s_input_cell_data[32768];
+static uint8_t s_input_cell_data[MAX_CELL_SIZE];
 static uint32_t s_input_cell_length = 0;
 
 int fill_input_cell_data(uint8_t* data, size_t length) {
@@ -129,7 +132,7 @@ int fill_input_cell_data(uint8_t* data, size_t length) {
   return 0;
 }
 
-static uint8_t s_output_cell_data[32768];
+static uint8_t s_output_cell_data[MAX_CELL_SIZE];
 static uint32_t s_output_cell_length = 0;
 
 int fill_output_cell_data(uint8_t* data, size_t length) {

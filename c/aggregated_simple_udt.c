@@ -31,7 +31,7 @@
 // more than enough. We are also using blake2b with 256-bit hash here, which is
 // the same as CKB.
 #define BLAKE2B_BLOCK_SIZE 32
-#define SCRIPT_SIZE 32768
+#define SCRIPT_SIZE (48 * 8192)
 #define MAX_SUDT_ENTRY_COUNT 12800
 #define SUDT_ID_SIZE 32
 #define CHECK_ADD_ASSIGN(sum, v)               \
@@ -50,29 +50,6 @@ typedef struct sudt_entry_t {
 
 int compare_sudt_entry(const void* a, const void* b) {
   return memcmp(((sudt_entry_t*)a)->id, ((sudt_entry_t*)b)->id, SUDT_ID_SIZE);
-}
-
-typedef int (*cmp_func_t)(const void* a, const void* b);
-
-void* bsearch(const void* key, const void* base, size_t num, size_t size,
-              cmp_func_t cmp) {
-  const char* pivot;
-  int result;
-
-  while (num > 0) {
-    pivot = base + (num >> 1) * size;
-    result = cmp(key, pivot);
-
-    if (result == 0) return (void*)pivot;
-
-    if (result > 0) {
-      base = pivot + size;
-      num--;
-    }
-    num >>= 1;
-  }
-
-  return NULL;
 }
 
 // this is the data struct which we allocate at the beginning on stack
@@ -101,8 +78,7 @@ int load(sudt_container_t* container, size_t index, size_t source) {
   uint32_t sudt_length = 0;
   uint64_t len = sizeof(uint32_t);
   int ret = ckb_load_cell_data((uint8_t*)&sudt_length, &len, 0, index, source);
-  if (ret == CKB_INDEX_OUT_OF_BOUND)
-    return ret;
+  if (ret == CKB_INDEX_OUT_OF_BOUND) return ret;
   if (ret != CKB_SUCCESS) {
     return ret;
   }
@@ -282,8 +258,7 @@ int inner_main() {
       return ret;
     }
     ret = merge(&container);
-    if (ret != CKB_SUCCESS)
-      return ret;
+    if (ret != CKB_SUCCESS) return ret;
     i += 1;
   }
 
@@ -295,7 +270,8 @@ int inner_main() {
   while (1) {
     uint32_t sudt_length = 0;
     uint64_t len = sizeof(uint32_t);
-    int ret = ckb_load_cell_data((uint8_t*)&sudt_length, &len, 0, i, CKB_SOURCE_GROUP_OUTPUT);
+    int ret = ckb_load_cell_data((uint8_t*)&sudt_length, &len, 0, i,
+                                 CKB_SOURCE_GROUP_OUTPUT);
     if (ret == CKB_INDEX_OUT_OF_BOUND) {
       break;
     }
@@ -305,21 +281,21 @@ int inner_main() {
     if (len != sizeof(uint32_t)) {
       return ERROR_ENCODING_4;
     }
-    if ((sudt_length*sizeof(struct sudt_entry_t)) > output_sudt_length) {
+    if ((sudt_length * sizeof(struct sudt_entry_t)) > output_sudt_length) {
       return ERROR_TOO_MANY_SUDT;
     }
     len = output_sudt_length;
     ret = ckb_load_cell_data(output_sudt, &len, 4, i, CKB_SOURCE_GROUP_OUTPUT);
-    // here don't need to check CKB_INDEX_OUT_OF_BOUND because we're sure there must be data
+    // here don't need to check CKB_INDEX_OUT_OF_BOUND because we're sure there
+    // must be data
     if (ret != CKB_SUCCESS) {
       return ret;
     }
-    if (len != (sudt_length*sizeof(struct sudt_entry_t))) {
+    if (len != (sudt_length * sizeof(struct sudt_entry_t))) {
       return ERROR_ENCODING_2;
     }
     ret = subtract(&container, output_sudt, sudt_length);
-    if (ret != CKB_SUCCESS)
-      return ret;
+    if (ret != CKB_SUCCESS) return ret;
     i += 1;
   }
 
