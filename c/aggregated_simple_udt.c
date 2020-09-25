@@ -24,8 +24,8 @@
 #define ERROR_ENCODING_4 -57
 #define ERROR_ENCODING_5 -58
 
-#define BLAKE2B_BLOCK_SIZE 32
 #define TEMP_BUFF_SIZE (48 * 8192)
+#define SCRIPT_SIZE 32768
 #define MAX_SUDT_ENTRY_COUNT 12800
 #define SUDT_ID_SIZE 32
 #define CHECK_ADD_ASSIGN(sum, v)               \
@@ -61,30 +61,55 @@ int push(sudt_container_t* container, sudt_entry_t* from_input_cell,
   if ((container->count + count) > MAX_SUDT_ENTRY_COUNT) {
     return ERROR_ARGUMENTS_LEN;
   }
-  memcpy(container->buff, from_input_cell,
-         count * sizeof(struct sudt_container_t));
+  memcpy(container->buff + container->count, from_input_cell,
+         count * sizeof(sudt_entry_t));
   container->count += count;
   return CKB_SUCCESS;
 }
 
-// *Aggregated cell type script rule 2*: all cells with a) a type script
-// containing a 32-byte script args; and b) a cell data that is no less than 16
-// bytes will be treated as regular SUDT cells, which will be taken into account
-// when validating *rule 1*.
-int load_regular_sudt_cell(size_t index, size_t source) {
+// *Aggregated cell type script rule 2*: all cells with
+// a) a type script containing a 32-byte script args; and
+// b) a cell data that is no less than 16 bytes will be treated as regular SUDT
+// cells, which will be taken into account when validating *rule 1*.
+int load_regular_sudt_cell(uint8_t* script, uint64_t script_len,
+                           sudt_entry_t* entry, size_t index, size_t source) {
+  // a cell data that is no less than 16 bytes
   uint128_t amount = 0;
   uint64_t len = sizeof(uint128_t);
   int ret = ckb_load_cell_data(&amount, &len, 0, index, source);
-  if (ret == CKB_INDEX_OUT_OF_BOUND)
-    return ret;
+  if (ret == CKB_INDEX_OUT_OF_BOUND) return ret;
   if (ret != CKB_SUCCESS) {
     return ret;
   }
   if (len < sizeof(uint128_t)) {
     return CKB_INVALID_DATA;
   }
-  // then check the type script args(= 32 bytes)
 
+  // then check the type script args(= 32 bytes)
+  len = script_len;
+  ret = ckb_load_cell_by_field(script, &len, 0, index, source,
+                               CKB_CELL_FIELD_TYPE);
+  if (ret == CKB_INDEX_OUT_OF_BOUND) return ret;
+  if (ret != CKB_SUCCESS) {
+    return ret;
+  }
+  if (len > SCRIPT_SIZE) {
+    return ERROR_SCRIPT_TOO_LONG;
+  }
+  mol_seg_t script_seg;
+  script_seg.ptr = (uint8_t*)script;
+  script_seg.size = len;
+
+  if (MolReader_Script_verify(&script_seg, false) != MOL_OK) {
+    return ERROR_ENCODING;
+  }
+  mol_seg_t args_seg = MolReader_Script_get_args(&script_seg);
+  mol_seg_t id_seg = MolReader_Bytes_raw_bytes(&args_seg);
+  if (id_seg.size != SUDT_ID_SIZE) {
+    return ERROR_ENCODING_5;
+  }
+  entry->amount = amount;
+  memcpy(&entry->id, id_seg.ptr, SUDT_ID_SIZE);
 
   return CKB_SUCCESS;
 }
@@ -206,6 +231,8 @@ int inner_main() {
   // Here we load a cell of data once a time, then merge it.
   // There are 2 types of cell: aggregated cell and regular SUDT cell.
   // In SUDT cell there is only one ID/amount pair.
+
+  // loop through all aggregated cells
   size_t i = 0;
   while (1) {
     ret = load(&container, i, CKB_SOURCE_GROUP_INPUT);
@@ -219,6 +246,29 @@ int inner_main() {
     if (ret != CKB_SUCCESS) return ret;
     i += 1;
   }
+
+  // we need to borrow temp_buff for loading script
+  ASSERT(SCRIPT_SIZE < TEMP_BUFF_SIZE);
+  // loop through all regular SUDE cells in input
+  i = 0;
+  while (1) {
+    sudt_entry_t entry;
+    ret = load_regular_sudt_cell(temp_buff, SCRIPT_SIZE, &entry, i,
+                                 CKB_SOURCE_INPUT);
+    if (ret == CKB_INDEX_OUT_OF_BOUND) {
+      break;
+    }
+    if (ret == CKB_SUCCESS) {
+      ret = push(&container, &entry, 1);
+      // overflow
+      if (ret != CKB_SUCCESS) return ret;
+    } else {
+      // invalid data is possible, it's not an error
+    }
+    i++;
+  }
+  // merge it once
+  merge(&container);
 
   sudt_entry_t* output_sudt = (sudt_entry_t*)temp_buff;
   uint32_t output_sudt_length = sizeof(temp_buff);
@@ -255,6 +305,24 @@ int inner_main() {
     ret = subtract(&container, output_sudt, sudt_length);
     if (ret != CKB_SUCCESS) return ret;
     i += 1;
+  }
+
+  // loop through all regular SUDE cells in output
+  i = 0;
+  while (1) {
+    sudt_entry_t entry;
+    ret = load_regular_sudt_cell(temp_buff, SCRIPT_SIZE, &entry, i,
+                                 CKB_SOURCE_OUTPUT);
+    if (ret == CKB_INDEX_OUT_OF_BOUND) {
+      break;
+    }
+    if (ret == CKB_SUCCESS) {
+      ret = subtract(&container, &entry, 1);
+      if (ret != CKB_SUCCESS) return ret;
+    } else {
+      // invalid data is possible, it's not an error
+    }
+    i++;
   }
 
   return CKB_SUCCESS;
