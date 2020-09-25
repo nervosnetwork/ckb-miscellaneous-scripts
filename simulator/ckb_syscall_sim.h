@@ -6,6 +6,12 @@
 #include <blockchain.h>
 #include <assert.h>
 
+#ifndef RSA_VALID_KEY_SIZE1
+#define RSA_VALID_KEY_SIZE1 1024
+#define PUBLIC_KEY_SIZE1 (RSA_VALID_KEY_SIZE1 / 8 + 4)
+#endif
+
+
 static inline long __internal_syscall(long n, long _a0, long _a1, long _a2,
                                       long _a3, long _a4, long _a5) {
     return 0;
@@ -135,6 +141,12 @@ int ckb_look_for_dep_with_hash(const uint8_t* data_hash, size_t* index);
 int ckb_calculate_inputs_len() {
   return 0;
 }
+
+int ckb_load_cell_data(void* addr, uint64_t* len, size_t offset, size_t index,
+                       size_t source) {
+  return 0;
+}
+
 
 #endif
 
