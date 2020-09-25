@@ -4,11 +4,7 @@
 #include "blockchain.h"
 #include "stdlib.h"
 
-#ifdef CKB_USE_SIM
-#include "ckb_consts.h"
-#include "ckb_syscall_agg_sudt.h"
-#define ASSERT assert
-#else
+#ifndef CKB_USE_SIM
 #include "ckb_syscalls.h"
 #define ASSERT(a) (void)0
 #endif
@@ -26,12 +22,10 @@
 #define ERROR_ENCODING_2 -55
 #define ERROR_ENCODING_3 -56
 #define ERROR_ENCODING_4 -57
+#define ERROR_ENCODING_5 -58
 
-// We are limiting the script size loaded to be 32KB at most. This should be
-// more than enough. We are also using blake2b with 256-bit hash here, which is
-// the same as CKB.
 #define BLAKE2B_BLOCK_SIZE 32
-#define SCRIPT_SIZE (48 * 8192)
+#define TEMP_BUFF_SIZE (48 * 8192)
 #define MAX_SUDT_ENTRY_COUNT 12800
 #define SUDT_ID_SIZE 32
 #define CHECK_ADD_ASSIGN(sum, v)               \
@@ -70,6 +64,28 @@ int push(sudt_container_t* container, sudt_entry_t* from_input_cell,
   memcpy(container->buff, from_input_cell,
          count * sizeof(struct sudt_container_t));
   container->count += count;
+  return CKB_SUCCESS;
+}
+
+// *Aggregated cell type script rule 2*: all cells with a) a type script
+// containing a 32-byte script args; and b) a cell data that is no less than 16
+// bytes will be treated as regular SUDT cells, which will be taken into account
+// when validating *rule 1*.
+int load_regular_sudt_cell(size_t index, size_t source) {
+  uint128_t amount = 0;
+  uint64_t len = sizeof(uint128_t);
+  int ret = ckb_load_cell_data(&amount, &len, 0, index, source);
+  if (ret == CKB_INDEX_OUT_OF_BOUND)
+    return ret;
+  if (ret != CKB_SUCCESS) {
+    return ret;
+  }
+  if (len < sizeof(uint128_t)) {
+    return CKB_INVALID_DATA;
+  }
+  // then check the type script args(= 32 bytes)
+
+
   return CKB_SUCCESS;
 }
 
@@ -176,79 +192,21 @@ int subtract(sudt_container_t* container, sudt_entry_t* from_output_cell,
 }
 
 int inner_main() {
-  // First, let's load current running script, so we can extract owner lock
-  // script hash from script args.
-  unsigned char script[SCRIPT_SIZE];
-  uint64_t len = SCRIPT_SIZE;
-  int ret = ckb_load_script(script, &len, 0);
-  if (ret != CKB_SUCCESS) {
-    return ERROR_SYSCALL;
-  }
-  if (len > SCRIPT_SIZE) {
-    return ERROR_SCRIPT_TOO_LONG;
-  }
-  mol_seg_t script_seg;
-  script_seg.ptr = (uint8_t*)script;
-  script_seg.size = len;
-
-  if (MolReader_Script_verify(&script_seg, false) != MOL_OK) {
-    return ERROR_ENCODING;
-  }
-
-  mol_seg_t args_seg = MolReader_Script_get_args(&script_seg);
-  mol_seg_t args_bytes_seg = MolReader_Bytes_raw_bytes(&args_seg);
-  if (args_bytes_seg.size != BLAKE2B_BLOCK_SIZE) {
-    return ERROR_ARGUMENTS_LEN;
-  }
-
-  // With owner lock script extracted, we will look through each input in the
-  // current transaction to see if any unlocked cell uses owner lock.
-  int owner_mode = 0;
-  size_t i = 0;
-  while (1) {
-    uint8_t buffer[BLAKE2B_BLOCK_SIZE];
-    uint64_t len = BLAKE2B_BLOCK_SIZE;
-    // There are 2 points worth mentioning here:
-    //
-    // * First, we are using the checked version of CKB syscalls, the checked
-    // versions will return an error if our provided buffer is not enough to
-    // hold all returned data. This can help us ensure that we are processing
-    // enough data here.
-    // * Second, `CKB_CELL_FIELD_LOCK_HASH` is used here to directly load the
-    // lock script hash, so we don't have to manually calculate the hash again
-    // here.
-    ret = ckb_checked_load_cell_by_field(buffer, &len, 0, i, CKB_SOURCE_INPUT,
-                                         CKB_CELL_FIELD_LOCK_HASH);
-    if (ret == CKB_INDEX_OUT_OF_BOUND) {
-      break;
-    }
-    if (ret != CKB_SUCCESS) {
-      return ret;
-    }
-    if (len != BLAKE2B_BLOCK_SIZE) {
-      return ERROR_ENCODING;
-    }
-    if (memcmp(buffer, args_bytes_seg.ptr, BLAKE2B_BLOCK_SIZE) == 0) {
-      owner_mode = 1;
-      break;
-    }
-    i += 1;
-  }
-
-  // When owner mode is triggered, we won't perform any checks here, the owner
-  // is free to make any changes here, including token issurance, minting, etc.
-  if (owner_mode) {
-    return CKB_SUCCESS;
-  }
+  int ret = ERROR_ONLY_INIT;
+  unsigned char temp_buff[TEMP_BUFF_SIZE];
 
   sudt_container_t container;
   init(&container);
 
-  // When the owner mode is not enabled, however, we will then need to ensure
-  // the sum of all input tokens is not smaller than the sum of all output
-  // tokens. First, let's loop through all input cells containing current UDTs,
-  // and gather the sum of all input tokens.
-  i = 0;
+  // Aggregated cell type script rule 1:
+  // for each SUDT type involved in the transaction,
+  // the sum of tokens from all input cells,
+  // must not be smaller than the sum of tokens from all output cells.
+  //
+  // Here we load a cell of data once a time, then merge it.
+  // There are 2 types of cell: aggregated cell and regular SUDT cell.
+  // In SUDT cell there is only one ID/amount pair.
+  size_t i = 0;
   while (1) {
     ret = load(&container, i, CKB_SOURCE_GROUP_INPUT);
     if (ret == CKB_INDEX_OUT_OF_BOUND) {
@@ -262,9 +220,8 @@ int inner_main() {
     i += 1;
   }
 
-  // re-use "script" buff
-  sudt_entry_t* output_sudt = (sudt_entry_t*)script;
-  uint32_t output_sudt_length = sizeof(script);
+  sudt_entry_t* output_sudt = (sudt_entry_t*)temp_buff;
+  uint32_t output_sudt_length = sizeof(temp_buff);
 
   i = 0;
   while (1) {
@@ -294,6 +251,7 @@ int inner_main() {
     if (len != (sudt_length * sizeof(struct sudt_entry_t))) {
       return ERROR_ENCODING_2;
     }
+    // note: sudt_length = 0 can work
     ret = subtract(&container, output_sudt, sudt_length);
     if (ret != CKB_SUCCESS) return ret;
     i += 1;

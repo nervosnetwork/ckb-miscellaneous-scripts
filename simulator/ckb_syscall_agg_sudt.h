@@ -76,6 +76,9 @@ int ckb_load_script(void* addr, uint64_t* len, size_t offset) {
   }
   memcpy(addr, res.seg.ptr, res.seg.size);
   *len = res.seg.size;
+
+  free(res.seg.ptr);
+  free(bytes.ptr);
   return 0;
 }
 

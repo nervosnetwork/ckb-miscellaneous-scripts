@@ -1,3 +1,7 @@
+
+#include "ckb_consts.h"
+#include "ckb_syscall_agg_sudt.h"
+#define ASSERT assert
 #include "../c/aggregated_simple_udt.c"
 #include <stdio.h>
 #include <stdlib.h>
@@ -82,10 +86,9 @@ void stress_test(void) {
 }
 
 void srand(unsigned seed);
+long time(long *);
 
-void random_test() {
-  printf("\n------- begin random test ----------\n");
-  srand (__LINE__);
+void random_test_once() {
   size_t length = rand() % 8192;
   uint64_t data[length];
 
@@ -123,6 +126,13 @@ void test_1() {
   CHECK(container.count, 3);
 }
 
+void random_test() {
+  srand (time(NULL));
+  printf("\n------- begin random test ----------\n");
+  for (int i = 0; i < 100; i++) {
+    random_test_once();
+  }
+}
 
 int main() {
   printf("Start testing ... It fails when exit with non-zero or abort!\n");
@@ -154,9 +164,9 @@ int main() {
   }
   stress_test();
   random_test();
-
   test_1();
 
+  // TODO: multiple cell data
   printf("\n-------------\nAll test cases passed\n-----------\n");
   return 0;
 }
