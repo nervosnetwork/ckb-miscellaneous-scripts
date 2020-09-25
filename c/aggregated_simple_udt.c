@@ -93,7 +93,7 @@ int load_regular_sudt_cell(uint8_t* script, uint64_t script_len,
   if (ret != CKB_SUCCESS) {
     return ret;
   }
-  if (len > SCRIPT_SIZE) {
+  if (len > script_len) {
     return ERROR_SCRIPT_TOO_LONG;
   }
   mol_seg_t script_seg;
@@ -249,7 +249,7 @@ int inner_main() {
 
   // we need to borrow temp_buff for loading script
   ASSERT(SCRIPT_SIZE < TEMP_BUFF_SIZE);
-  // loop through all regular SUDE cells in input
+  // loop through all regular SUDT cells in input
   i = 0;
   while (1) {
     sudt_entry_t entry;
@@ -307,7 +307,7 @@ int inner_main() {
     i += 1;
   }
 
-  // loop through all regular SUDE cells in output
+  // loop through all regular SUDT cells in output
   i = 0;
   while (1) {
     sudt_entry_t entry;

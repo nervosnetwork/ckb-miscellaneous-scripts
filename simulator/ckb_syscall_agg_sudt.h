@@ -55,7 +55,7 @@ mol_seg_t build_args_bytes() {
 #define MAX_ARGS_COUNT 32
 #define MAX_ARGS_SIZE 32
 
-static uint8_t s_input_args[MAX_ARGS_COUNT][MAX_ARGS_SIZE] = {0};
+static uint8_t s_input_args[MAX_ARGS_COUNT][MAX_ARGS_SIZE] = {{0}};
 static uint32_t s_input_args_size = 0;
 
 void push_input_type_script_args(uint8_t* data) {
@@ -68,7 +68,7 @@ void init_input_type_script_args(void) {
   s_input_args_size = 0;
 }
 
-static uint8_t s_output_args[MAX_ARGS_COUNT][MAX_ARGS_SIZE] = {0};
+static uint8_t s_output_args[MAX_ARGS_COUNT][MAX_ARGS_SIZE] = {{0}};
 static uint32_t s_output_args_size = 0;
 
 void push_output_type_script_args(uint8_t* data) {
@@ -218,7 +218,7 @@ int fill_output_cell_data(uint8_t* data, size_t length) {
 
 #define MAX_REGULAR_CELL_COUNT 32
 #define MAX_REGULAR_CELL_SIZE 16
-static uint8_t s_input_regular_cell_data[MAX_REGULAR_CELL_COUNT][MAX_REGULAR_CELL_SIZE] = {0};
+static uint8_t s_input_regular_cell_data[MAX_REGULAR_CELL_COUNT][MAX_REGULAR_CELL_SIZE] = {{0}};
 static uint32_t s_input_regular_cell_size = 0;
 void init_input_regular_cell_data(void) {
   s_input_regular_cell_size = 0;
@@ -230,7 +230,7 @@ int push_input_regular_cell_data(uint8_t* data) {
   return 0;
 }
 
-static uint8_t s_output_regular_cell_data[MAX_REGULAR_CELL_COUNT][MAX_REGULAR_CELL_SIZE] = {0};
+static uint8_t s_output_regular_cell_data[MAX_REGULAR_CELL_COUNT][MAX_REGULAR_CELL_SIZE] = {{0}};
 static uint32_t s_output_regular_cell_size = 0;
 void init_output_regular_cell_data(void) {
   s_output_regular_cell_size = 0;
