@@ -191,14 +191,14 @@ int main() {
       return ERROR_TRANSACTION;
     }
     uint8_t *lock = &witness[20];
-    output_count = lock[0];
     // To ensure the security of a partial transaction, a script hash is always
     // included in the witness. There must be one running script in the current
     // transaction with matching script hash here.
-    ret = script_exists(&lock[1]);
+    ret = script_exists(lock);
     if (ret != CKB_SUCCESS) {
       return ret;
     }
+    output_count = lock[32];
     signature_length = lock_length - 33;
     memcpy(signature, &lock[33], signature_length);
     memset(&lock[33], 0, signature_length);
