@@ -36,6 +36,67 @@
 #define DEBUG(s)
 #endif /* ENABLE_DEBUG_MODE */
 
+int script_exists(uint8_t script_hash[32]) {
+  uint8_t hash[32];
+  size_t input_i = 0, output_i = 0;
+  uint64_t len;
+  int ret;
+
+  static uint8_t last_found_script_hash[32];
+  static int last_found;
+
+  if (last_found != 0 && memcmp(script_hash, last_found_script_hash, 32) == 0) {
+    return CKB_SUCCESS;
+  }
+  memcpy(last_found_script_hash, script_hash, 32);
+  last_found = 0;
+
+  while (input_i < SIZE_MAX && output_i < SIZE_MAX) {
+    if (input_i < SIZE_MAX) {
+      // Test lock and type on input cell
+      len = 32;
+      ret = ckb_load_cell_by_field(hash, &len, 0, input_i, CKB_SOURCE_INPUT,
+                                   CKB_CELL_FIELD_TYPE_HASH);
+      if (ret == CKB_INDEX_OUT_OF_BOUND) {
+        input_i = SIZE_MAX;
+      }
+      if (ret == CKB_SUCCESS && len == 32 &&
+          memcmp(hash, script_hash, 32) == 0) {
+        last_found = 1;
+        return CKB_SUCCESS;
+      }
+      len = 32;
+      ret = ckb_load_cell_by_field(hash, &len, 0, input_i, CKB_SOURCE_INPUT,
+                                   CKB_CELL_FIELD_LOCK_HASH);
+      if (ret == CKB_INDEX_OUT_OF_BOUND) {
+        input_i = SIZE_MAX;
+      }
+      if (ret == CKB_SUCCESS && len == 32 &&
+          memcmp(hash, script_hash, 32) == 0) {
+        last_found = 1;
+        return CKB_SUCCESS;
+      }
+      input_i++;
+    }
+    if (output_i < SIZE_MAX) {
+      // Test type on output cell
+      len = 32;
+      ret = ckb_load_cell_by_field(hash, &len, 0, output_i, CKB_SOURCE_OUTPUT,
+                                   CKB_CELL_FIELD_TYPE_HASH);
+      if (ret == CKB_INDEX_OUT_OF_BOUND) {
+        output_i = SIZE_MAX;
+      }
+      if (ret == CKB_SUCCESS && len == 32 &&
+          memcmp(hash, script_hash, 32) == 0) {
+        last_found = 1;
+        return CKB_SUCCESS;
+      }
+    }
+  }
+  DEBUG("Matching script cannot be found!");
+  return ERROR_TRANSACTION;
+}
+
 int main() {
   uint8_t current_script_hash[32];
   uint64_t len = 32;
@@ -131,9 +192,16 @@ int main() {
     }
     uint8_t *lock = &witness[20];
     output_count = lock[0];
-    signature_length = lock_length - 1;
-    memcpy(signature, &lock[1], signature_length);
-    memset(&lock[1], 0, signature_length);
+    // To ensure the security of a partial transaction, a script hash is always
+    // included in the witness. There must be one running script in the current
+    // transaction with matching script hash here.
+    ret = script_exists(&lock[1]);
+    if (ret != CKB_SUCCESS) {
+      return ret;
+    }
+    signature_length = lock_length - 33;
+    memcpy(signature, &lock[33], signature_length);
+    memset(&lock[33], 0, signature_length);
 
     blake2b_state message_ctx;
     blake2b_init(&message_ctx, BLAKE2B_BLOCK_SIZE);
