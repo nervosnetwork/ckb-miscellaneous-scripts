@@ -5,12 +5,6 @@ OBJCOPY := $(TARGET)-objcopy
 CFLAGS := -fPIC -O3 -nostdinc -nostdlib -nostartfiles -fvisibility=hidden -I deps/ckb-c-stdlib -I deps/ckb-c-stdlib/libc -I deps -I deps/ckb-c-stdlib/molecule -I c -I build -I deps/secp256k1/src -I deps/secp256k1 -Wall -Werror -Wno-nonnull -Wno-nonnull-compare -Wno-unused-function -g
 LDFLAGS := -Wl,-static -fdata-sections -ffunction-sections -Wl,--gc-sections
 SECP256K1_SRC := deps/secp256k1/src/ecmult_static_pre_context.h
-MOLC := moleculec
-MOLC_VERSION := 0.4.1
-PROTOCOL_HEADER := build/blockchain.h
-PROTOCOL_SCHEMA := build/blockchain.mol
-PROTOCOL_VERSION := d75e4c56ffa40e17fd2fe477da3f98c5578edcd1
-PROTOCOL_URL := https://raw.githubusercontent.com/nervosnetwork/ckb/${PROTOCOL_VERSION}/util/types/schemas/blockchain.mol
 
 CFLAGS_MBEDTLS := -fPIC -Os -fno-builtin-printf -nostdinc -nostdlib -nostartfiles -fvisibility=hidden -fdata-sections -ffunction-sections -I deps/ckb-c-stdlib -I deps/ckb-c-stdlib/molecule -I deps/ckb-c-stdlib/libc -I deps/mbedtls/include -Wall -Werror -Wno-nonnull -Wno-nonnull-compare -Wno-unused-function -g
 LDFLAGS_MBEDTLS := -Wl,-static -Wl,--gc-sections
@@ -21,7 +15,7 @@ BUILDER_DOCKER := nervos/ckb-riscv-gnu-toolchain@sha256:aae8a3f79705f67d505d1f1d
 
 all: build/htlc build/secp256k1_blake2b_sighash_all_lib.so build/or build/simple_udt build/secp256k1_blake2b_sighash_all_dual build/and build/open_transaction build/rsa_sighash_all
 
-all-via-docker: ${PROTOCOL_HEADER} build/or.h
+all-via-docker:
 	docker run --rm -v `pwd`:/code ${BUILDER_DOCKER} bash -c "cd /code && make"
 
 build/htlc: c/htlc.c build/secp256k1_blake2b_sighash_all_lib.h
@@ -51,28 +45,25 @@ build/generate_data_hash: deps/generate_data_hash.c
 build/dump_secp256k1_data: deps/dump_secp256k1_data.c $(SECP256K1_SRC)
 	gcc -O3 -I deps/secp256k1/src -I deps/secp256k1 -o $@ $<
 
-build/or: c/or.c build/or.h $(PROTOCOL_HEADER)
+build/or: c/or.c c/or.h
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $<
 	$(OBJCOPY) --only-keep-debug $@ $@.debug
 	$(OBJCOPY) --strip-debug --strip-all $@
 
-build/and: c/and.c build/or.h $(PROTOCOL_HEADER)
+build/and: c/and.c c/or.h
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $<
 	$(OBJCOPY) --only-keep-debug $@ $@.debug
 	$(OBJCOPY) --strip-debug --strip-all $@
 
-build/open_transaction: c/open_transaction.c build/or.h $(PROTOCOL_HEADER)
+build/open_transaction: c/open_transaction.c
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $<
 	$(OBJCOPY) --only-keep-debug $@ $@.debug
 	$(OBJCOPY) --strip-debug --strip-all $@
 
-build/simple_udt: c/simple_udt.c $(PROTOCOL_HEADER)
+build/simple_udt: c/simple_udt.c
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $<
 	$(OBJCOPY) --only-keep-debug $@ $@.debug
 	$(OBJCOPY) --strip-debug --strip-all $@
-
-build/or.h: c/or.mol ${PROTOCOL_SCHEMA}
-	${MOLC} --language c --schema-file $< > $@
 
 deps/mbedtls/library/libmbedcrypto.a:
 	cp deps/mbedtls-config-template.h deps/mbedtls/include/mbedtls/config.h
@@ -98,41 +89,22 @@ rsa_sighash_clean:
 	rm -f build/rsa_sighash_all_test
 	rm -f build/*.o
 
-
 $(SECP256K1_SRC):
 	cd deps/secp256k1 && \
 		./autogen.sh && \
 		CC=$(CC) LD=$(LD) ./configure --with-bignum=no --enable-ecmult-static-precomputation --enable-endomorphism --enable-module-recovery --host=$(TARGET) && \
 		make src/ecmult_static_pre_context.h src/ecmult_static_context.h
 
-generate-protocol: check-moleculec-version ${PROTOCOL_HEADER}
-
-check-moleculec-version:
-	test "$$(${MOLC} --version | awk '{ print $$2 }' | tr -d ' ')" = ${MOLC_VERSION}
-
 fmt:
 	clang-format -i -style=Google $(wildcard c/*.h c/*.c)
 	git diff --exit-code $(wildcard c/*.h c/*.c)
 
-${PROTOCOL_HEADER}: ${PROTOCOL_SCHEMA}
-	${MOLC} --language c --schema-file $< > $@
-
-${PROTOCOL_SCHEMA}:
-	curl -L -o $@ ${PROTOCOL_URL}
-
-install-tools:
-	if [ ! -x "$$(command -v "${MOLC}")" ] \
-			|| [ "$$(${MOLC} --version | awk '{ print $$2 }' | tr -d ' ')" != "${MOLC_VERSION}" ]; then \
-		cargo install --force --version "${MOLC_VERSION}" "${MOLC}"; \
-	fi
-
 clean:
-	rm -rf ${PROTOCOL_HEADER} ${PROTOCOL_SCHEMA}
 	rm -rf build/htlc build/dump_secp256k1_data build/secp256k1_data build/secp256k1_data_info.h
 	rm -rf build/generate_data_hash build/secp256k1_blake2b_sighash_all_lib.h
 	rm -rf build/secp256k1_blake2b_sighash_all_lib.so
 	rm -rf build/*.debug
-	rm -rf build/or build/or.h
+	rm -rf build/or
 	rm -rf build/simple_udt build/secp256k1_blake2b_sighash_all_dual build/and
 	cd deps/secp256k1 && [ -f "Makefile" ] && make clean
 	make -C deps/mbedtls/library clean
@@ -141,4 +113,3 @@ clean:
 dist: clean all
 
 .PHONY: all all-via-docker dist clean fmt
-.PHONY: generate-protocol check-moleculec-version install-tools
