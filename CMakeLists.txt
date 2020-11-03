@@ -26,4 +26,4 @@ add_executable(sighash_all
         simulator/ckb_syscall_simulator.c
         simulator/cJSON.h
         simulator/cJSON.c
-        )
+        simulator/molecule_decl_only.h simulator/blake2b_decl_only.h)
