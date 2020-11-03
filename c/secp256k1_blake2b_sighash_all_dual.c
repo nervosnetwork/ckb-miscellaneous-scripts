@@ -12,10 +12,18 @@
 
 // One noticable addition here, is that we are including `ckb_dlfcn.h` library.
 // This provides dynamic linking related features.
+#if defined(SIMULATOR)
+#include "ckb_syscall_simulator.h"
+#else
+#include "ckb_syscalls.h"
+#endif
+
+
 #include "blake2b.h"
 #include "blockchain.h"
 #include "ckb_dlfcn.h"
-#include "ckb_syscalls.h"
+
+
 #include "ckb_utils.h"
 #include "secp256k1_helper.h"
 
@@ -333,7 +341,7 @@ typedef struct {
 //
 // Assuming ELF header lives at 0x0, also avoiding deferencing
 // NULL pointer.
-int main() {
+int main2() {
   uint64_t *phoff = (uint64_t *)OFFSETOF(Elf64_Ehdr, e_phoff);
   uint16_t *phnum = (uint16_t *)OFFSETOF(Elf64_Ehdr, e_phnum);
   Elf64_Phdr *program_headers = (Elf64_Phdr *)(*phoff);
