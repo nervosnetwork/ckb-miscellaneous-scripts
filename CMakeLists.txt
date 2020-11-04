@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.15)
 project(ckb_miscellaneous_scripts C)
 
 set(CMAKE_C_STANDARD 11)
+#set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fsanitize=address -fsanitize=undefined")
 
 add_definitions(-DSIMULATOR)
 add_definitions(-D__SHARED_LIBRARY__)
@@ -18,7 +19,6 @@ include_directories(build)
 include_directories(deps/secp256k1/src)
 include_directories(deps/secp256k1)
 
-
 add_executable(sighash_all
         c/secp256k1_blake2b_sighash_all_dual.c
         build/secp256k1_data_info.h
@@ -27,3 +27,13 @@ add_executable(sighash_all
         simulator/cJSON.h
         simulator/cJSON.c
         simulator/molecule_decl_only.h simulator/blake2b_decl_only.h)
+
+add_executable(sudt
+        c/simple_udt.c
+        build/secp256k1_data_info.h
+        simulator/ckb_syscall_simulator.h
+        simulator/ckb_syscall_simulator.c
+        simulator/cJSON.h
+        simulator/cJSON.c
+        simulator/molecule_decl_only.h simulator/blake2b_decl_only.h)
+set_target_properties(sudt PROPERTIES COMPILE_DEFINITIONS BLAKE2B_SRC=1)
