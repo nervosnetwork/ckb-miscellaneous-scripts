@@ -12,7 +12,7 @@
 
 // One noticable addition here, is that we are including `ckb_dlfcn.h` library.
 // This provides dynamic linking related features.
-#if defined(SIMULATOR)
+#if defined(CKB_SIMULATOR)
 #include "ckb_syscall_simulator.h"
 #else
 #include "ckb_syscalls.h"
@@ -338,7 +338,7 @@ typedef struct {
 //
 // Assuming ELF header lives at 0x0, also avoiding deferencing
 // NULL pointer.
-#ifdef SIMULATOR
+#ifdef CKB_SIMULATOR
 int main_() {
 #else
 int main() {
@@ -378,6 +378,6 @@ int main() {
   return validate_simple();
 }
 
-#ifdef SIMULATOR
+#ifdef CKB_SIMULATOR
 int simulator_main(void) { return validate_simple(); }
 #endif

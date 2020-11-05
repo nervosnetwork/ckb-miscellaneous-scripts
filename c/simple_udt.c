@@ -18,7 +18,7 @@
 // however for the sake of simplicity, we are happy with this limitation.
 
 // First, let's include header files used to interact with CKB.
-#if defined(SIMULATOR)
+#if defined(CKB_SIMULATOR)
 #include "ckb_syscall_simulator.h"
 #else
 #include "ckb_syscalls.h"
@@ -42,7 +42,7 @@
 // We will leverage gcc's 128-bit integer extension here for number crunching.
 typedef unsigned __int128 uint128_t;
 
-#ifdef SIMULATOR
+#ifdef CKB_SIMULATOR
 int simulator_main() {
 #else
 int main() {

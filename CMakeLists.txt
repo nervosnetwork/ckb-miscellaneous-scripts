@@ -2,9 +2,10 @@ cmake_minimum_required(VERSION 3.15)
 project(ckb_miscellaneous_scripts C)
 
 set(CMAKE_C_STANDARD 11)
+# uncomment it for sanitize
 #set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fsanitize=address -fsanitize=undefined")
 
-add_definitions(-DSIMULATOR)
+add_definitions(-DCKB_SIMULATOR)
 add_definitions(-D__SHARED_LIBRARY__)
 add_definitions(-DCKB_DECLARATION_ONLY)
 
@@ -36,4 +37,5 @@ add_executable(sudt
         simulator/cJSON.h
         simulator/cJSON.c
         simulator/molecule_decl_only.h simulator/blake2b_decl_only.h)
-set_target_properties(sudt PROPERTIES COMPILE_DEFINITIONS BLAKE2B_SRC=1)
+target_compile_definitions(sudt PUBLIC BLAKE2B_SRC)
+

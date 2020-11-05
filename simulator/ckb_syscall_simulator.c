@@ -1,6 +1,7 @@
 
 // make assert working under release
 #undef NDEBUG
+//#define CKB_SIMULATOR_VERBOSE
 
 #include "ckb_syscall_simulator.h"
 
@@ -53,6 +54,8 @@ size_t s_data_hash_len = 0;
 // -----------------------
 bool is_in_group(uint32_t index);
 int init_json_data_source(const char* file_name);
+int load_script(void* addr, uint64_t* len, size_t offset, bool is_lock,
+                uint32_t script_index, bool from_cell_deps);
 
 cJSON* get_item_at(cJSON* j, size_t index) {
   if (j == NULL) {
@@ -290,18 +293,40 @@ void prepare_hash(void) {
     item->data = malloc(item->len);
     load_data(data->valuestring, item->data, &item->len, 0);
     blake2b_hash(item->data, item->len, item->hash);
-
-    // printf("Cell data hash at index %zu:", index);
-    // print_hex(item->hash, TX_HASH_SIZE);
+#ifdef CKB_SIMULATOR_VERBOSE
+    printf("Cell data hash at index %zu:", index);
+    print_hex(item->hash, HASH_SIZE);
+#endif
     index++;
   }
   s_data_hash_len = index;
+
+  uint8_t script[SCRIPT_SIZE];
+  uint64_t script_size = SCRIPT_SIZE;
+  uint32_t idx = 0;
+  uint8_t hash[HASH_SIZE] = {0};
+  while (true) {
+    int ret = load_script(script, &script_size, 0, false, idx, true);
+    if (ret == CKB_INDEX_OUT_OF_BOUND) break;
+    if (ret == CKB_ITEM_MISSING) {
+      // it's null
+    } else {
+      assert(ret == CKB_SUCCESS);
+      blake2b_hash(script, script_size, hash);
+#ifdef CKB_SIMULATOR_VERBOSE
+      printf("script hash at index %d: ", idx);
+      print_hex(hash, HASH_SIZE);
+#endif
+    }
+    idx++;
+  }
 }
 
 int load_script(void* addr, uint64_t* len, size_t offset, bool is_lock,
-                uint32_t script_index) {
+                uint32_t script_index, bool from_cell_deps) {
   cJSON* mock_info = cJSON_GetObjectItem(s_tx_json, "mock_info");
-  cJSON* inputs = cJSON_GetObjectItem(mock_info, "inputs");
+  const char* field = from_cell_deps ? "cell_deps" : "inputs";
+  cJSON* inputs = cJSON_GetObjectItem(mock_info, field);
   cJSON* input_at_index = get_item_at(inputs, script_index);
   if (input_at_index == NULL) return CKB_INDEX_OUT_OF_BOUND;
 
@@ -309,6 +334,9 @@ int load_script(void* addr, uint64_t* len, size_t offset, bool is_lock,
   const char* lock_or_type = is_lock ? "lock" : "type";
   cJSON* lock_or_type_json = cJSON_GetObjectItem(output, lock_or_type);
   assert(lock_or_type_json != NULL);
+  if (cJSON_IsNull(lock_or_type_json)) {
+    return CKB_ITEM_MISSING;
+  }
   cJSON* args_json = cJSON_GetObjectItem(lock_or_type_json, "args");
   cJSON* code_hash_json = cJSON_GetObjectItem(lock_or_type_json, "code_hash");
   cJSON* hash_type_json = cJSON_GetObjectItem(lock_or_type_json, "hash_type");
@@ -332,7 +360,8 @@ int load_script(void* addr, uint64_t* len, size_t offset, bool is_lock,
 }
 
 int ckb_load_script(void* addr, uint64_t* len, size_t offset) {
-  return load_script(addr, len, offset, s_is_lock_script, s_script_index);
+  return load_script(addr, len, offset, s_is_lock_script, s_script_index,
+                     false);
 }
 
 int ckb_load_cell_by_field(void* addr, uint64_t* len, size_t offset,
@@ -356,7 +385,7 @@ int ckb_load_cell_by_field(void* addr, uint64_t* len, size_t offset,
       uint8_t lock_script[SCRIPT_SIZE];
       uint64_t lock_script_len = SCRIPT_SIZE;
       int ret = load_script(lock_script, &lock_script_len, 0, s_is_lock_script,
-                            index);
+                            index, false);
       if (ret != CKB_SUCCESS) return ret;
 
       uint8_t hash[HASH_SIZE];
