@@ -18,8 +18,12 @@
 // however for the sake of simplicity, we are happy with this limitation.
 
 // First, let's include header files used to interact with CKB.
-#include "blockchain.h"
+#if defined(CKB_SIMULATOR)
+#include "ckb_syscall_simulator.h"
+#else
 #include "ckb_syscalls.h"
+#endif
+#include "blockchain.h"
 
 // We are limiting the script size loaded to be 32KB at most. This should be
 // more than enough. We are also using blake2b with 256-bit hash here, which is
@@ -38,7 +42,11 @@
 // We will leverage gcc's 128-bit integer extension here for number crunching.
 typedef unsigned __int128 uint128_t;
 
+#ifdef CKB_SIMULATOR
+int simulator_main() {
+#else
 int main() {
+#endif
   // First, let's load current running script, so we can extract owner lock
   // script hash from script args.
   unsigned char script[SCRIPT_SIZE];
