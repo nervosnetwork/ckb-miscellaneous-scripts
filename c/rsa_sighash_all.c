@@ -54,6 +54,11 @@
 #endif
 int md_string(const mbedtls_md_info_t *md_info, const unsigned char *buf,
               size_t n, unsigned char *output);
+
+int mbedtls_hardware_poll(void *data, unsigned char *output, size_t len,
+                          size_t *olen) {
+  return 0;
+}
 /**
  * Note: there is no prefilled data for RSA, it's only be used in secp256k1.
  * Always succeed.
