@@ -20,8 +20,7 @@ include_directories(build)
 include_directories(deps/secp256k1/src)
 include_directories(deps/secp256k1)
 
-add_executable(sighash_all
-        c/secp256k1_blake2b_sighash_all_dual.c
+add_library(ckb_simulator
         build/secp256k1_data_info.h
         simulator/ckb_syscall_simulator.h
         simulator/ckb_syscall_simulator.c
@@ -29,13 +28,8 @@ add_executable(sighash_all
         simulator/cJSON.c
         simulator/molecule_decl_only.h simulator/blake2b_decl_only.h)
 
-add_executable(sudt
-        c/simple_udt.c
-        build/secp256k1_data_info.h
-        simulator/ckb_syscall_simulator.h
-        simulator/ckb_syscall_simulator.c
-        simulator/cJSON.h
-        simulator/cJSON.c
-        simulator/molecule_decl_only.h simulator/blake2b_decl_only.h)
-target_compile_definitions(sudt PUBLIC BLAKE2B_SRC)
+add_executable(sighash_all c/secp256k1_blake2b_sighash_all_dual.c)
+target_link_libraries(sighash_all ckb_simulator)
 
+add_executable(sudt c/simple_udt.c simulator/blake2b_imp.c)
+target_link_libraries(sudt ckb_simulator)

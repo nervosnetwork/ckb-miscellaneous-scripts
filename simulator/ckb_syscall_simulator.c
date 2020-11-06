@@ -13,11 +13,7 @@
 #include "blockchain-api2.h"
 #include "cJSON.h"
 #include "molecule_decl_only.h"
-#ifdef BLAKE2B_SRC
-#include "blake2b.h"
-#else
 #include "blake2b_decl_only.h"
-#endif
 
 #define FAIL(msg)                                               \
   do {                                                          \
@@ -195,16 +191,19 @@ int ckb_load_script_hash(void* addr, uint64_t* len, size_t offset) {
   return CKB_SUCCESS;
 }
 
+// TODO: currently it's not used, will be implemented
 int ckb_load_cell(void* addr, uint64_t* len, size_t offset, size_t index,
                   size_t source) {
   return 0;
 }
 
+// TODO: currently it's not used, will be implemented
 int ckb_load_input(void* addr, uint64_t* len, size_t offset, size_t index,
                    size_t source) {
   return 0;
 }
 
+// TODO: currently it's not used, will be implemented
 int ckb_load_header(void* addr, uint64_t* len, size_t offset, size_t index,
                     size_t source) {
   return 0;
@@ -393,6 +392,7 @@ int ckb_load_cell_by_field(void* addr, uint64_t* len, size_t offset,
 
       load_offset(hash, HASH_SIZE, addr, len, 0);
     } else {
+      // TODO: currently it's not used, will be implemented
       assert(false);
     }
   } else {
@@ -402,6 +402,7 @@ int ckb_load_cell_by_field(void* addr, uint64_t* len, size_t offset,
   return 0;
 }
 
+// TODO: currently it's not used, will be implemented
 int ckb_load_header_by_field(void* addr, uint64_t* len, size_t offset,
                              size_t index, size_t source, size_t field) {
   return 0;
@@ -434,6 +435,7 @@ int ckb_load_input_by_field(void* addr, uint64_t* len, size_t offset,
   return CKB_SUCCESS;
 }
 
+// TODO: currently it's not used, will be implemented
 int ckb_load_cell_code(void* addr, size_t memory_size, size_t content_offset,
                        size_t content_size, size_t index, size_t source) {
   return 0;
@@ -468,6 +470,7 @@ int ckb_load_cell_data(void* addr, uint64_t* len, size_t offset, size_t index,
 
 int ckb_debug(const char* s) { return 0; }
 
+// TODO: currently it's not used, will be implemented
 int load_actual_type_witness(uint8_t* buf, uint64_t* len, size_t index,
                              size_t* type_source) {
   return 0;

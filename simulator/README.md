@@ -51,3 +51,18 @@ See more in simulator/run-simulator.sh :
 ``` 
  
 There are more example data under simulator/data folder.
+
+
+## Used as a library
+The simulator is also compiled into library. After build, we can find
+library file "libckb_simulator.a". (location simulator/build.simulator/libckb_simulator.a). 
+It must be used together with following files and macro:
+- simulator/ckb_syscall_simulator.h
+- optional simulator/blake2b_imp.c file
+- macro: CKB_SIMULATOR, see example in secp256k1_blake2b_sighash_all_dual.c
+
+
+
+Explanation of extra blake2b_imp.c file: Some contracts include implementation of blake2b directly 
+but some don't. So we don't include implementation of blake2b source in library.
+For example, simple_udt doesn't include it so we need to add it to project manually.
