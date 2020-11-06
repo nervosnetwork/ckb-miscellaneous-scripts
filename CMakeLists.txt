@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.15)
+cmake_minimum_required(VERSION 3.12)
 project(ckb_miscellaneous_scripts C)
 
 set(CMAKE_C_STANDARD 11)
