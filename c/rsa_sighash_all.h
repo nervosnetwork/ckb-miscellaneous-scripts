@@ -3,6 +3,25 @@
 
 #include <stddef.h>
 
+
+#define CKB_VERIFY_RSA 1
+#define CKB_VERIFY_SECP256R1 2
+
+
+typedef enum {
+  CKB_MD_NONE=0,      /**< None. */
+  CKB_MD_MD2=1,       /**< The MD2 message digest. */
+  CKB_MD_MD4=2,       /**< The MD4 message digest. */
+  CKB_MD_MD5=3,       /**< The MD5 message digest. */
+  CKB_MD_SHA1=4,      /**< The SHA-1 message digest. */
+  CKB_MD_SHA224=5,    /**< The SHA-224 message digest. */
+  CKB_MD_SHA256=6,    /**< The SHA-256 message digest. */
+  CKB_MD_SHA384=7,    /**< The SHA-384 message digest. */
+  CKB_MD_SHA512=8,    /**< The SHA-512 message digest. */
+  CKB_MD_RIPEMD160=9, /**< The RIPEMD-160 message digest. */
+} ckb_md_type_t;
+
+
 #define PLACEHOLDER_SIZE (128)
 
 /** signature(in witness) memory layout
@@ -22,6 +41,9 @@ signature part is dropped. Here function blake160 returns the first 20 bytes of
 blake2b result.
 */
 typedef struct RsaInfo {
+  uint16_t algorithm_id;
+  uint16_t md_type;
+
   // RSA Key Size, in bits. For example, 1024, 2048, 4096
   uint32_t key_size;
   // RSA public key, part E. It's normally very small, OK to use uint32_to hold
@@ -44,6 +66,12 @@ typedef struct RsaInfo {
   // pointer to RSA signature
   uint8_t sig[PLACEHOLDER_SIZE];
 } RsaInfo;
+
+typedef struct Secp256r1Info {
+  uint16_t algorithm_id;
+  uint16_t md_type;
+  uint8_t sig[PLACEHOLDER_SIZE];
+} Secp256r1Info;
 
 /**
  * get offset of signature based on key size.

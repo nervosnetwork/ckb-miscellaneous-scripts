@@ -8,7 +8,6 @@
 #include <string.h>
 
 #include "blake2b.h"
-#include "mbedtls/md.h"
 #include "mbedtls/memory_buffer_alloc.h"
 #include "mbedtls/rsa.h"
 
@@ -26,6 +25,7 @@
 #define ERROR_RSA_ONLY_INIT (-44)
 #define ERROR_RSA_INVALID_KEY_SIZE (-45)
 #define ERROR_RSA_INVALID_BLADE2B_SIZE (-46)
+#define ERROR_RSA_INVALID_ID (-47)
 
 #define RSA_VALID_KEY_SIZE1 1024
 #define RSA_VALID_KEY_SIZE2 2048
@@ -52,8 +52,6 @@
 #else
 #define mbedtls_printf(x, ...) (void)0
 #endif
-int md_string(const mbedtls_md_info_t *md_info, const unsigned char *buf,
-              size_t n, unsigned char *output);
 
 int mbedtls_hardware_poll(void *data, unsigned char *output, size_t len,
                           size_t *olen) {
@@ -80,6 +78,7 @@ uint8_t *get_rsa_signature(RsaInfo *info) {
 
 uint32_t calculate_rsa_info_length(int key_size) { return 8 + key_size / 4; }
 
+
 /**
  *
  * @param prefilled_data ignore. Not used.
@@ -93,15 +92,14 @@ uint32_t calculate_rsa_info_length(int key_size) { return 8 + key_size / 4; }
  * @param output_len ignore. Not used.
  * @return
  */
-__attribute__((visibility("default"))) int validate_signature(
+int validate_signature_rsa(
     void *prefilled_data, const uint8_t *signature_buffer,
-    size_t signature_size, const uint8_t *message_buffer, size_t message_size,
+    size_t signature_size, const uint8_t *hash_buff, size_t hash_size,
     uint8_t *output, size_t *output_len) {
   (void)prefilled_data;
   int ret;
   int exit_code = ERROR_RSA_ONLY_INIT;
   mbedtls_rsa_context rsa;
-  unsigned char hash[32];
   RsaInfo *input_info = (RsaInfo *)signature_buffer;
 
   // for key size with 1024 and 2048 bits, it uses up to 7K bytes.
@@ -117,7 +115,7 @@ __attribute__((visibility("default"))) int validate_signature(
                   input_info->key_size == RSA_VALID_KEY_SIZE3,
               ERROR_RSA_INVALID_KEY_SIZE);
   CHECK_PARAM(signature_buffer != NULL, ERROR_RSA_INVALID_PARAM1);
-  CHECK_PARAM(message_buffer != NULL, ERROR_RSA_INVALID_PARAM1);
+  CHECK_PARAM(hash_buff != NULL, ERROR_RSA_INVALID_PARAM1);
   CHECK_PARAM(
       signature_size == (size_t)calculate_rsa_info_length(input_info->key_size),
       ERROR_RSA_INVALID_PARAM2);
@@ -128,16 +126,8 @@ __attribute__((visibility("default"))) int validate_signature(
   mbedtls_mpi_read_binary_le(&rsa.N, input_info->N, input_info->key_size / 8);
   rsa.len = (mbedtls_mpi_bitlen(&rsa.N) + 7) >> 3;
 
-  ret = md_string(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), message_buffer,
-                  message_size, hash);
-  if (ret != 0) {
-    mbedtls_printf("md_string failed: %d", ret);
-    exit_code = ERROR_RSA_MDSTRING_FAILED;
-    goto exit;
-  }
-  // note: hashlen = 20 is used for MD5, we can ignore it here for SHA256.
   ret = mbedtls_rsa_pkcs1_verify(&rsa, NULL, NULL, MBEDTLS_RSA_PUBLIC,
-                                 MBEDTLS_MD_SHA256, 20, hash,
+                                 input_info->md_type, hash_size, hash_buff,
                                  get_rsa_signature(input_info));
   if (ret != 0) {
     mbedtls_printf("mbedtls_rsa_pkcs1_verify returned -0x%0x\n",
@@ -165,26 +155,34 @@ exit:
   return exit_code;
 }
 
-int md_string(const mbedtls_md_info_t *md_info, const unsigned char *buf,
-              size_t n, unsigned char *output) {
-  int ret = -1;
-  mbedtls_md_context_t ctx;
+int validate_signature_secp256r1(
+    void *prefilled_data, const uint8_t *signature_buffer,
+    size_t signature_size, const uint8_t *hash_buff, size_t hash_size,
+    uint8_t *output, size_t *output_len)
+{
+  return 0;
+}
+/**
+ * entry for different algorithms
+ * The fist byte of signature_buffer is the id of algorithm, it can be:
+ * #define CKB_VERIFY_RSA 1
+ * #define CKB_VERIFY_SECP256R1 2
+ */
+__attribute__((visibility("default"))) int validate_signature(
+    void *prefilled_data, const uint8_t *signature_buffer,
+    size_t signature_size, const uint8_t *hash_buff, size_t hash_size,
+    uint8_t *output, size_t *output_len) {
+  uint32_t id = ((RsaInfo*)signature_buffer)->algorithm_id;
 
-  if (md_info == NULL) return (MBEDTLS_ERR_MD_BAD_INPUT_DATA);
-
-  mbedtls_md_init(&ctx);
-
-  if ((ret = mbedtls_md_setup(&ctx, md_info, 0)) != 0) goto cleanup;
-
-  if ((ret = mbedtls_md_starts(&ctx)) != 0) goto cleanup;
-
-  if ((ret = mbedtls_md_update(&ctx, buf, n)) != 0) goto cleanup;
-
-  ret = mbedtls_md_finish(&ctx, output);
-
-cleanup:
-  mbedtls_md_free(&ctx);
-  return ret;
+  if (id == CKB_VERIFY_RSA) {
+    return validate_signature_rsa(prefilled_data, signature_buffer, signature_size,
+                                  hash_buff, hash_size, output, output_len);
+  } else if (id == CKB_VERIFY_SECP256R1) {
+    return validate_signature_secp256r1(prefilled_data, signature_buffer, signature_size,
+                                  hash_buff, hash_size, output, output_len);
+  } else {
+    return ERROR_RSA_INVALID_ID;
+  }
 }
 
 /*

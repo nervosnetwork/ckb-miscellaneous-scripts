@@ -1,5 +1,9 @@
 #include "../c/rsa_sighash_all.c"
 
+#include "mbedtls/md.h"
+int md_string(const mbedtls_md_info_t *md_info, const char *buf,
+              size_t n, unsigned char *output);
+
 static unsigned char get_hex(unsigned char c) {
   if (c >= '0' && c <= '9')
     return c - '0';
@@ -70,6 +74,11 @@ int main(int argc, const char *argv[]) {
     if (sig_ptr >= sig_end) break;
   }
 
+  // initial alloc handler for md_string
+  int alloc_buff_size = 1024 * 7;
+  unsigned char alloc_buff[alloc_buff_size];
+  mbedtls_memory_buffer_alloc_init(alloc_buff, alloc_buff_size);
+
   int limbs_count = strlen(N) * 4 / 8;
   mbedtls_mpi_uint n_buff[limbs_count];
   mbedtls_mpi NN;
@@ -83,6 +92,8 @@ int main(int argc, const char *argv[]) {
   uint32_t length = calculate_rsa_info_length(key_size);
   uint8_t info_buff[length];
   RsaInfo* info = (RsaInfo*)info_buff;
+  info->algorithm_id = CKB_VERIFY_RSA;
+  info->md_type = CKB_MD_SHA256;
   info->key_size = 1024;
   info->E = 65537;  // hex format: "010001"
   mbedtls_mpi_write_binary_le(&NN, info->N, key_size / 8);
@@ -90,8 +101,16 @@ int main(int argc, const char *argv[]) {
 
   uint8_t output[BLAKE160_SIZE];
   size_t output_len = BLAKE160_SIZE;
-  int result = validate_signature(NULL, (const uint8_t *)info, length,
-                                  (const uint8_t *)msg, strlen(msg), output,
+  uint8_t hash[32] = {0};
+
+  int result = md_string(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), msg, strlen(msg), hash);
+  if (result != 0) {
+    mbedtls_printf("md_string failed: %d\n", result);
+    exit_code = ERROR_RSA_MDSTRING_FAILED;
+    goto exit;
+  }
+  result = validate_signature(NULL, (const uint8_t *)info, length,
+                                  hash, sizeof(hash), output,
                                   &output_len);
   if (result == 0) {
     mbedtls_printf("validate signature passed\n");
@@ -102,8 +121,14 @@ int main(int argc, const char *argv[]) {
   }
 
   msg = "hello, world!";
+  result = md_string(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), msg, strlen(msg), hash);
+  if (result != 0) {
+    mbedtls_printf("md_string failed: %d\n", result);
+    exit_code = ERROR_RSA_MDSTRING_FAILED;
+    goto exit;
+  }
   int result2 = validate_signature(NULL, (const uint8_t *)info, length,
-                                   (const uint8_t *)msg, strlen(msg), output,
+                                   hash, sizeof(hash), output,
                                    &output_len);
   if (result2 == ERROR_RSA_VERIFY_FAILED) {
     mbedtls_printf("validate signature passed\n");
@@ -118,6 +143,8 @@ int main(int argc, const char *argv[]) {
     uint32_t length = calculate_rsa_info_length(key_size);
     uint8_t info_buff[length];
     RsaInfo *info = (RsaInfo*)info_buff;
+    info->algorithm_id = CKB_VERIFY_RSA;
+    info->md_type = CKB_MD_SHA256;
     info->key_size = key_size;
     info->E = 65537;  // hex format: "010001"
     mbedtls_mpi_write_binary_le(&NN, info->N, info->key_size / 8);
@@ -125,8 +152,15 @@ int main(int argc, const char *argv[]) {
     memcpy(get_rsa_signature(info), sig_buf, key_size/8);
     memcpy(get_rsa_signature(info)+key_size/8, sig_buf, key_size/8);
 
+    uint8_t hash[32] = {0};
+    int result = md_string(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), msg, strlen(msg), hash);
+    if (result != 0) {
+      mbedtls_printf("md_string failed: %d\n", result);
+      exit_code = ERROR_RSA_MDSTRING_FAILED;
+      goto exit;
+    }
     int result3 = validate_signature(NULL, (const uint8_t *) info, length,
-                                     (const uint8_t *) msg, strlen(msg), output,
+                                     hash, sizeof(hash), output,
                                      &output_len);
     if (result3 == ERROR_RSA_VERIFY_FAILED) {
       mbedtls_printf("validate signature (2048-bit) passed\n");
@@ -141,6 +175,8 @@ int main(int argc, const char *argv[]) {
     uint32_t length = calculate_rsa_info_length(key_size);
     uint8_t info_buff[length];
     RsaInfo *info = (RsaInfo*)info_buff;
+    info->algorithm_id = CKB_VERIFY_RSA;
+    info->md_type = CKB_MD_SHA256;
     info->key_size = key_size;
     info->E = 65537;  // hex format: "010001"
     mbedtls_mpi_write_binary_le(&NN, info->N, key_size / 8);
@@ -148,8 +184,15 @@ int main(int argc, const char *argv[]) {
     memcpy(get_rsa_signature(info), sig_buf, key_size/8);
     memcpy(get_rsa_signature(info)+key_size/8, sig_buf, key_size/8);
 
+    uint8_t hash[32] = {0};
+    int result = md_string(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), msg, strlen(msg), hash);
+    if (result != 0) {
+      mbedtls_printf("md_string failed: %d\n", result);
+      exit_code = ERROR_RSA_MDSTRING_FAILED;
+      goto exit;
+    }
     int result4 = validate_signature(NULL, (const uint8_t *) info, length,
-                                     (const uint8_t *) msg, strlen(msg), output,
+                                     hash, sizeof(hash), output,
                                      &output_len);
     if (result4 == ERROR_RSA_VERIFY_FAILED) {
       mbedtls_printf("validate signature (4096-bit) passed\n");
@@ -176,3 +219,27 @@ exit:
   }
   return exit_code;
 }
+
+
+int md_string(const mbedtls_md_info_t *md_info, const char *buf,
+              size_t n, unsigned char *output) {
+  int ret = -1;
+  mbedtls_md_context_t ctx;
+
+  if (md_info == NULL) return (MBEDTLS_ERR_MD_BAD_INPUT_DATA);
+
+  mbedtls_md_init(&ctx);
+
+  if ((ret = mbedtls_md_setup(&ctx, md_info, 0)) != 0) goto cleanup;
+
+  if ((ret = mbedtls_md_starts(&ctx)) != 0) goto cleanup;
+
+  if ((ret = mbedtls_md_update(&ctx, (const unsigned char *)buf, n)) != 0) goto cleanup;
+
+  ret = mbedtls_md_finish(&ctx, output);
+
+cleanup:
+  mbedtls_md_free(&ctx);
+  return ret;
+}
+
