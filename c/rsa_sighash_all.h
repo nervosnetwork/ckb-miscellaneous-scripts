@@ -3,24 +3,11 @@
 
 #include <stddef.h>
 
-
+// used as algorithm_id
 #define CKB_VERIFY_RSA 1
 #define CKB_VERIFY_SECP256R1 2
-
-
-typedef enum {
-  CKB_MD_NONE=0,      /**< None. */
-  CKB_MD_MD2=1,       /**< The MD2 message digest. */
-  CKB_MD_MD4=2,       /**< The MD4 message digest. */
-  CKB_MD_MD5=3,       /**< The MD5 message digest. */
-  CKB_MD_SHA1=4,      /**< The SHA-1 message digest. */
-  CKB_MD_SHA224=5,    /**< The SHA-224 message digest. */
-  CKB_MD_SHA256=6,    /**< The SHA-256 message digest. */
-  CKB_MD_SHA384=7,    /**< The SHA-384 message digest. */
-  CKB_MD_SHA512=8,    /**< The SHA-512 message digest. */
-  CKB_MD_RIPEMD160=9, /**< The RIPEMD-160 message digest. */
-} ckb_md_type_t;
-
+// not supported yet
+#define CKB_VERIFY_SECP256R1_RECOVERABLE 3
 
 #define PLACEHOLDER_SIZE (128)
 
@@ -41,8 +28,7 @@ signature part is dropped. Here function blake160 returns the first 20 bytes of
 blake2b result.
 */
 typedef struct RsaInfo {
-  uint16_t algorithm_id;
-  uint16_t md_type;
+  uint32_t algorithm_id;  // common header part
 
   // RSA Key Size, in bits. For example, 1024, 2048, 4096
   uint32_t key_size;
@@ -67,10 +53,18 @@ typedef struct RsaInfo {
   uint8_t sig[PLACEHOLDER_SIZE];
 } RsaInfo;
 
+#define SECP256R1_PUBLIC_KEY_SIZE 64
+#define SECP256R1_SIG_SIZE 64
+
 typedef struct Secp256r1Info {
-  uint16_t algorithm_id;
-  uint16_t md_type;
-  uint8_t sig[PLACEHOLDER_SIZE];
+  uint32_t algorithm_id;   // common header part
+  // X: 32 bytes
+  // Y: 32 bytes
+  // X, Y are in Jacobian coordinates, see: mbedtls_ecp_point
+  uint8_t public_key[SECP256R1_PUBLIC_KEY_SIZE];
+  // r: 32 bytes
+  // s: 32 bytes
+  uint8_t sig[SECP256R1_SIG_SIZE];
 } Secp256r1Info;
 
 /**
