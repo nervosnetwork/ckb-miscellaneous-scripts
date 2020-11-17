@@ -57,7 +57,7 @@ typedef struct RsaInfo {
 #define SECP256R1_SIG_SIZE 64
 
 typedef struct Secp256r1Info {
-  uint32_t algorithm_id;   // common header part
+  uint32_t algorithm_id;  // common header part
   // X: 32 bytes
   // Y: 32 bytes
   // X, Y are in Jacobian coordinates, see: mbedtls_ecp_point
@@ -75,5 +75,4 @@ uint8_t* get_rsa_signature(RsaInfo* info);
  * get total length of RsaInfo based on key size.
  */
 uint32_t calculate_rsa_info_length(int key_size);
-
 #endif  // CKB_MISCELLANEOUS_SCRIPTS_RSA_SIGHASH_ALL_H

@@ -30,6 +30,15 @@
 #define ERROR_RSA_INVALID_KEY_SIZE (-45)
 #define ERROR_RSA_INVALID_BLADE2B_SIZE (-46)
 #define ERROR_RSA_INVALID_ID (-47)
+#define ERROR_D1_INVALID_ARG1 (-51)
+#define ERROR_D1_INVALID_ARG2 (-52)
+#define ERROR_D1_INVALID_ARG3 (-53)
+#define ERROR_D1_INVALID_ARG4 (-54)
+#define ERROR_D1_INVALID_ARG5 (-55)
+#define ERROR_D1_INVALID_ARG6 (-56)
+#define ERROR_D1_INVALID_ARG7 (-57)
+#define ERROR_D1_INVALID_TSUM (-58)
+#define ERROR_D1_NOT_SIX (-59)
 
 #define RSA_VALID_KEY_SIZE1 1024
 #define RSA_VALID_KEY_SIZE2 2048
@@ -42,13 +51,22 @@
 #define PUBLIC_KEY_SIZE2 (RSA_VALID_KEY_SIZE2 / 8 + 4)
 #define PUBLIC_KEY_SIZE3 (RSA_VALID_KEY_SIZE3 / 8 + 4)
 
-#define CHECK(cond, code) \
-  do {                    \
-    if (!(cond)) {        \
-      exit_code = code;   \
-      ASSERT(0);          \
-      goto exit;          \
-    }                     \
+#define CHECK2(cond, code) \
+  do {                     \
+    if (!(cond)) {         \
+      err = code;          \
+      ASSERT(0);           \
+      goto exit;           \
+    }                      \
+  } while (0)
+
+#define CHECK(code)  \
+  do {               \
+    if (code != 0) { \
+      err = code;    \
+      ASSERT(0);     \
+      goto exit;     \
+    }                \
   } while (0)
 
 #if defined(CKB_USE_SIM)
@@ -103,7 +121,7 @@ int validate_signature_rsa(void *prefilled_data,
                            size_t *output_len) {
   (void)prefilled_data;
   int ret;
-  int exit_code = ERROR_RSA_ONLY_INIT;
+  int err = ERROR_RSA_ONLY_INIT;
   mbedtls_rsa_context rsa;
   RsaInfo *input_info = (RsaInfo *)signature_buffer;
 
@@ -115,16 +133,16 @@ int validate_signature_rsa(void *prefilled_data,
   mbedtls_memory_buffer_alloc_init(alloc_buff, alloc_buff_size);
 
   mbedtls_rsa_init(&rsa, MBEDTLS_RSA_PKCS_V15, 0);
-  CHECK(input_info->key_size == RSA_VALID_KEY_SIZE1 ||
-            input_info->key_size == RSA_VALID_KEY_SIZE2 ||
-            input_info->key_size == RSA_VALID_KEY_SIZE3,
-        ERROR_RSA_INVALID_KEY_SIZE);
-  CHECK(signature_buffer != NULL, ERROR_RSA_INVALID_PARAM1);
-  CHECK(hash_buff != NULL, ERROR_RSA_INVALID_PARAM1);
-  CHECK(
+  CHECK2(input_info->key_size == RSA_VALID_KEY_SIZE1 ||
+             input_info->key_size == RSA_VALID_KEY_SIZE2 ||
+             input_info->key_size == RSA_VALID_KEY_SIZE3,
+         ERROR_RSA_INVALID_KEY_SIZE);
+  CHECK2(signature_buffer != NULL, ERROR_RSA_INVALID_PARAM1);
+  CHECK2(hash_buff != NULL, ERROR_RSA_INVALID_PARAM1);
+  CHECK2(
       signature_size == (size_t)calculate_rsa_info_length(input_info->key_size),
       ERROR_RSA_INVALID_PARAM2);
-  CHECK(*output_len >= BLAKE160_SIZE, ERROR_RSA_INVALID_BLADE2B_SIZE);
+  CHECK2(*output_len >= BLAKE160_SIZE, ERROR_RSA_INVALID_BLADE2B_SIZE);
 
   mbedtls_mpi_read_binary_le(&rsa.E, (const unsigned char *)&input_info->E,
                              sizeof(uint32_t));
@@ -137,7 +155,7 @@ int validate_signature_rsa(void *prefilled_data,
   if (ret != 0) {
     mbedtls_printf("mbedtls_rsa_pkcs1_verify returned -0x%0x\n",
                    (unsigned int)-ret);
-    exit_code = ERROR_RSA_VERIFY_FAILED;
+    err = ERROR_RSA_VERIFY_FAILED;
     goto exit;
   }
 
@@ -152,68 +170,68 @@ int validate_signature_rsa(void *prefilled_data,
   *output_len = BLAKE160_SIZE;
   memcpy(output, blake2b_hash, BLAKE160_SIZE);
 
-  exit_code = CKB_SUCCESS;
+  err = CKB_SUCCESS;
 
 exit:
-  if (exit_code != CKB_SUCCESS) {
+  if (err != CKB_SUCCESS) {
     mbedtls_printf("validate_signature_rsa() failed.\n");
   }
   mbedtls_rsa_free(&rsa);
-  return exit_code;
+  return err;
 }
 
 int serialize_secp256r1info(const mbedtls_ecp_point *Q, const mbedtls_mpi *r,
                             mbedtls_mpi *s, Secp256r1Info *info) {
-  int exit_code = 0;
+  int err = 0;
 
-  exit_code = mbedtls_mpi_write_binary_le(&Q->X, info->public_key,
-                                          SECP256R1_PUBLIC_KEY_SIZE / 2);
-  CHECK(exit_code == 0, exit_code);
-  exit_code = mbedtls_mpi_write_binary_le(
+  err = mbedtls_mpi_write_binary_le(&Q->X, info->public_key,
+                                    SECP256R1_PUBLIC_KEY_SIZE / 2);
+  CHECK(err);
+  err = mbedtls_mpi_write_binary_le(
       &Q->Y, info->public_key + SECP256R1_PUBLIC_KEY_SIZE / 2,
       SECP256R1_PUBLIC_KEY_SIZE / 2);
-  CHECK(exit_code == 0, exit_code);
+  CHECK(err);
 
-  exit_code = mbedtls_mpi_write_binary_le(r, info->sig, SECP256R1_SIG_SIZE / 2);
-  CHECK(exit_code == 0, exit_code);
-  exit_code = mbedtls_mpi_write_binary_le(s, info->sig + SECP256R1_SIG_SIZE / 2,
-                                          SECP256R1_SIG_SIZE / 2);
-  CHECK(exit_code == 0, exit_code);
+  err = mbedtls_mpi_write_binary_le(r, info->sig, SECP256R1_SIG_SIZE / 2);
+  CHECK(err);
+  err = mbedtls_mpi_write_binary_le(s, info->sig + SECP256R1_SIG_SIZE / 2,
+                                    SECP256R1_SIG_SIZE / 2);
+  CHECK(err);
 
-  exit_code = CKB_SUCCESS;
+  err = CKB_SUCCESS;
 
 exit:
-  return exit_code;
+  return err;
 }
 
 int deserialize_secp256r1info(mbedtls_ecp_point *Q, mbedtls_mpi *r,
                               mbedtls_mpi *s, const Secp256r1Info *info) {
-  int exit_code = 0;
+  int err = 0;
   mbedtls_ecp_point_init(Q);
   mbedtls_mpi_init(r);
   mbedtls_mpi_init(s);
 
-  exit_code = mbedtls_mpi_read_binary_le(&Q->X, info->public_key,
-                                         SECP256R1_PUBLIC_KEY_SIZE / 2);
-  CHECK(exit_code == 0, exit_code);
-  exit_code = mbedtls_mpi_read_binary_le(
+  err = mbedtls_mpi_read_binary_le(&Q->X, info->public_key,
+                                   SECP256R1_PUBLIC_KEY_SIZE / 2);
+  CHECK(err);
+  err = mbedtls_mpi_read_binary_le(
       &Q->Y, info->public_key + SECP256R1_PUBLIC_KEY_SIZE / 2,
       SECP256R1_PUBLIC_KEY_SIZE / 2);
-  CHECK(exit_code == 0, exit_code);
+  CHECK(err);
 
   const uint32_t one = 1;
-  exit_code = mbedtls_mpi_read_binary_le(&Q->Z, (const unsigned char *)&one, 4);
-  CHECK(exit_code == 0, exit_code);
+  err = mbedtls_mpi_read_binary_le(&Q->Z, (const unsigned char *)&one, 4);
+  CHECK(err);
 
-  exit_code = mbedtls_mpi_read_binary_le(r, info->sig, SECP256R1_SIG_SIZE / 2);
-  CHECK(exit_code == 0, exit_code);
-  exit_code = mbedtls_mpi_read_binary_le(s, info->sig + SECP256R1_SIG_SIZE / 2,
-                                         SECP256R1_SIG_SIZE / 2);
-  CHECK(exit_code == 0, exit_code);
+  err = mbedtls_mpi_read_binary_le(r, info->sig, SECP256R1_SIG_SIZE / 2);
+  CHECK(err);
+  err = mbedtls_mpi_read_binary_le(s, info->sig + SECP256R1_SIG_SIZE / 2,
+                                   SECP256R1_SIG_SIZE / 2);
+  CHECK(err);
 
-  exit_code = CKB_SUCCESS;
+  err = CKB_SUCCESS;
 exit:
-  return exit_code;
+  return err;
 }
 
 int validate_signature_secp256r1(void *prefilled_data,
@@ -224,7 +242,7 @@ int validate_signature_secp256r1(void *prefilled_data,
   (void)prefilled_data;
   (void)output;
   (void)output_len;
-  int exit_code = 0;
+  int err = 0;
   int id = MBEDTLS_ECP_DP_SECP256R1;
   mbedtls_ecp_group grp;
   int alloc_buff_size = 700 * 1024;
@@ -233,25 +251,25 @@ int validate_signature_secp256r1(void *prefilled_data,
   mbedtls_memory_buffer_alloc_init(alloc_buff, alloc_buff_size);
 
   const Secp256r1Info *info = (Secp256r1Info *)signature_buffer;
-  CHECK(signature_size == sizeof(Secp256r1Info), ERROR_RSA_INVALID_PARAM1);
-  CHECK(hash_size == 32, ERROR_RSA_INVALID_PARAM1);
+  CHECK2(signature_size == sizeof(Secp256r1Info), ERROR_RSA_INVALID_PARAM1);
+  CHECK2(hash_size == 32, ERROR_RSA_INVALID_PARAM1);
 
   mbedtls_ecp_group_init(&grp);
-  exit_code = mbedtls_ecp_group_load(&grp, id);
-  CHECK(exit_code == 0, exit_code);
+  err = mbedtls_ecp_group_load(&grp, id);
+  CHECK(err);
 
   mbedtls_ecp_point Q;
   mbedtls_mpi r;
   mbedtls_mpi s;
-  exit_code = deserialize_secp256r1info(&Q, &r, &s, info);
-  CHECK(exit_code == 0, exit_code);
+  err = deserialize_secp256r1info(&Q, &r, &s, info);
+  CHECK(err);
 
-  exit_code = mbedtls_ecdsa_verify(&grp, hash_buff, hash_size, &Q, &r, &s);
-  CHECK(exit_code == 0, exit_code);
+  err = mbedtls_ecdsa_verify(&grp, hash_buff, hash_size, &Q, &r, &s);
+  CHECK(err);
 
-  exit_code = CKB_SUCCESS;
+  err = CKB_SUCCESS;
 exit:
-  return exit_code;
+  return err;
 }
 
 /**
@@ -490,4 +508,140 @@ __attribute__((visibility("default"))) int validate_rsa_sighash_all(
     return ERROR_RSA_VERIFY_FAILED;
   }
   return CKB_SUCCESS;
+}
+
+// ISO 9796-1 padding scheme
+typedef struct ISO9796D1Encoding {
+  int32_t bit_size;  // same as key size, 512, 1024, 2048, etc.
+  int32_t pad_bits;  // always set it to 4
+} ISO9796D1Encoding;
+
+uint32_t d1_cal_block_length(ISO9796D1Encoding* enc);
+int d1_encode(ISO9796D1Encoding* enc, uint8_t in[], uint32_t in_off,
+              uint32_t in_len, uint8_t block[], uint32_t block_length,
+              uint32_t* real_block_length);
+int d1_decode(ISO9796D1Encoding* enc, uint8_t block[], uint32_t block_length,
+              uint8_t new_block[], uint32_t* new_block_length);
+
+static uint8_t s_shadows[] = {0xe, 0x3, 0x5, 0x8, 0x9, 0x4, 0x2, 0xf,
+                              0x0, 0xd, 0xb, 0x6, 0x7, 0xa, 0xc, 0x1};
+static uint8_t s_inverse[] = {0x8, 0xf, 0x6, 0x1, 0x5, 0x2, 0xb, 0xc,
+                              0x3, 0x4, 0xd, 0xa, 0xe, 0x9, 0x0, 0x7};
+
+uint32_t d1_cal_block_length(ISO9796D1Encoding *enc) {
+  return (enc->bit_size + 7) / 8;
+}
+
+int d1_encode(ISO9796D1Encoding *enc, uint8_t in[], uint32_t in_off,
+              uint32_t in_len, uint8_t block[], uint32_t block_length,
+              uint32_t *real_block_length) {
+  int err = 0;
+  CHECK2(enc != NULL, ERROR_D1_INVALID_ARG1);
+  CHECK2(block != NULL, ERROR_D1_INVALID_ARG1);
+  CHECK2(in_off < in_len, ERROR_D1_INVALID_ARG1);
+  CHECK2(block_length > 0, ERROR_D1_INVALID_ARG1);
+  CHECK2(real_block_length != NULL, ERROR_D1_INVALID_ARG1);
+
+  uint32_t r = enc->pad_bits + 1;
+  uint32_t z = in_len;
+  uint32_t t = (enc->bit_size + 13) / 16;
+
+  for (uint32_t i = 0; i < t; i += z) {
+    if (i > (t - z)) {
+      memcpy(block + block_length - t, in + in_off + in_len - (t - i), t - i);
+    } else {
+      memcpy(block + block_length - (i + z), in + in_off, z);
+    }
+  }
+  CHECK2(block_length >= 2 * t, ERROR_D1_INVALID_ARG3);
+  for (uint32_t i = block_length - 2 * t; i != block_length; i += 2) {
+    uint8_t val = block[block_length - t + i / 2];
+    block[i] =
+        (uint8_t)((s_shadows[(val & 0xff) >> 4] << 4) | s_shadows[val & 0x0f]);
+    block[i + 1] = val;
+  }
+
+  CHECK2(block_length >= 2 * z, ERROR_D1_INVALID_ARG3);
+  block[block_length - 2 * z] ^= r;
+  block[block_length - 1] = (uint8_t)((block[block_length - 1] << 4) | 0x06);
+
+  int maxBit = (8 - (enc->bit_size - 1) % 8);
+  int offset = 0;
+
+  if (maxBit != 8) {
+    block[0] &= (0xff >> maxBit);
+    block[0] |= (0x80 >> maxBit);
+  } else {
+    block[0] = 0x00;
+    block[1] |= 0x80;
+    offset = 1;
+  }
+  if (offset == 1) {
+    memmove(block, block + 1, block_length - 1);
+    *real_block_length = block_length - 1;
+  } else {
+    *real_block_length = block_length;
+  }
+
+  err = 0;
+exit:
+  return err;
+}
+
+int d1_decode(ISO9796D1Encoding *enc, uint8_t block[], uint32_t block_length,
+              uint8_t new_block[], uint32_t *new_block_length) {
+  int err = 0;
+  CHECK2(block != NULL, ERROR_D1_INVALID_ARG2);
+  CHECK2(new_block != NULL, ERROR_D1_INVALID_ARG2);
+  CHECK2(new_block_length != NULL && *new_block_length == block_length,
+         ERROR_D1_INVALID_ARG2);
+
+  uint32_t r = 1;
+  uint32_t t = (enc->bit_size + 13) / 16;
+
+  int8_t *ptr = (int8_t *)block;
+  if (block[0] == 0) {
+    memmove(block, block + 1, block_length - 1);
+    block_length -= 1;
+    mbedtls_printf("block[0] == 0, shrinked\n");
+  }
+  CHECK2((block[block_length - 1] & 0x0f) == 0x6, ERROR_D1_NOT_SIX);
+
+  block[block_length - 1] =
+      (uint8_t)(((block[block_length - 1] & 0xff) >> 4) |
+                ((s_inverse[(block[block_length - 2] & 0xff) >> 4]) << 4));
+
+  block[0] = (uint8_t)((s_shadows[(block[1] & 0xff) >> 4] << 4) |
+                       s_shadows[block[1] & 0x0f]);
+  bool boundaryFound = false;
+  int boundary = 0;
+
+  ASSERT(block_length >= 2 * t);
+  int lower_bound = (int)(block_length - 2 * t);
+  for (int i = block_length - 1; i >= lower_bound; i -= 2) {
+    int val =
+        ((s_shadows[(block[i] & 0xff) >> 4] << 4) | s_shadows[block[i] & 0x0f]);
+    if (((block[i - 1] ^ val) & 0xff) != 0) {
+      if (!boundaryFound) {
+        boundaryFound = true;
+        r = (block[i - 1] ^ val) & 0xff;
+        boundary = i - 1;
+      } else {
+        err = ERROR_D1_INVALID_TSUM;
+        goto exit;
+      }
+    }
+  }
+  block[boundary] = 0;
+
+  *new_block_length = (block_length - boundary) / 2;
+
+  for (uint32_t i = 0; i < *new_block_length; i++) {
+    new_block[i] = block[2 * i + boundary + 1];
+  }
+  enc->pad_bits = r - 1;
+
+  err = 0;
+exit:
+  return err;
 }
