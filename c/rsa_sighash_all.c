@@ -12,6 +12,8 @@
 
 #include "blake2b.h"
 #include "mbedtls/ecdsa.h"
+#include "mbedtls/md.h"
+#include "mbedtls/md_internal.h"
 #include "mbedtls/memory_buffer_alloc.h"
 #include "mbedtls/rsa.h"
 
@@ -30,15 +32,18 @@
 #define ERROR_RSA_INVALID_KEY_SIZE (-45)
 #define ERROR_RSA_INVALID_BLADE2B_SIZE (-46)
 #define ERROR_RSA_INVALID_ID (-47)
-#define ERROR_D1_INVALID_ARG1 (-51)
-#define ERROR_D1_INVALID_ARG2 (-52)
-#define ERROR_D1_INVALID_ARG3 (-53)
-#define ERROR_D1_INVALID_ARG4 (-54)
-#define ERROR_D1_INVALID_ARG5 (-55)
-#define ERROR_D1_INVALID_ARG6 (-56)
-#define ERROR_D1_INVALID_ARG7 (-57)
-#define ERROR_D1_INVALID_TSUM (-58)
-#define ERROR_D1_NOT_SIX (-59)
+
+#define ERROR_ISO97962_INVALID_ARG1 (-51)
+#define ERROR_ISO97962_INVALID_ARG2 (-52)
+#define ERROR_ISO97962_INVALID_ARG3 (-53)
+#define ERROR_ISO97962_INVALID_ARG4 (-54)
+#define ERROR_ISO97962_INVALID_ARG5 (-55)
+#define ERROR_ISO97962_INVALID_ARG6 (-56)
+#define ERROR_ISO97962_INVALID_ARG7 (-57)
+#define ERROR_ISO97962_INVALID_ARG8 (-58)
+#define ERROR_ISO97962_INVALID_ARG9 (-59)
+#define ERROR_ISO97962_MISMATCH_HASH (-60)
+#define ERROR_ISO97962_NOT_FULL_MSG (-61)
 
 #define RSA_VALID_KEY_SIZE1 1024
 #define RSA_VALID_KEY_SIZE2 2048
@@ -75,6 +80,11 @@
 #else
 #define mbedtls_printf(x, ...) (void)0
 #endif
+
+int validate_signature_iso9796_2(void *, const uint8_t *sig_buf,
+                                 size_t sig_size, const uint8_t *msg_buf,
+                                 size_t msg_size, uint8_t *out,
+                                 size_t *out_len);
 
 int mbedtls_hardware_poll(void *data, unsigned char *output, size_t len,
                           size_t *olen) {
@@ -296,6 +306,8 @@ __attribute__((visibility("default"))) int validate_signature(
     return validate_signature_secp256r1(prefilled_data, signature_buffer,
                                         signature_size, hash_buff, hash_size,
                                         output, output_len);
+  } else if (id == CKB_VERIFY_ISO9796_2) {
+    return 0;
   } else {
     return ERROR_RSA_INVALID_ID;
   }
@@ -510,137 +522,219 @@ __attribute__((visibility("default"))) int validate_rsa_sighash_all(
   return CKB_SUCCESS;
 }
 
-// ISO 9796-1 padding scheme
-typedef struct ISO9796D1Encoding {
-  int32_t bit_size;  // same as key size, 512, 1024, 2048, etc.
-  int32_t pad_bits;  // always set it to 4
-} ISO9796D1Encoding;
+// ISO 9796-2, scheme #1
+enum Trailer {
+  TRAILER_IMPLICIT = 0xBC,
+  TRAILER_RIPEMD160 = 0x31CC,
+  TRAILER_RIPEMD128 = 0x32CC,
+  TRAILER_SHA1 = 0x33CC,
+  TRAILER_SHA256 = 0x34CC,
+  TRAILER_SHA512 = 0x35CC,
+  TRAILER_SHA384 = 0x36CC,
+  TRAILER_WHIRLPOOL = 0x37CC,
+  TRAILER_SHA224 = 0x38CC,
+  TRAILER_SHA512_224 = 0x39CC,
+  TRAILER_SHA512_256 = 0x3aCC
+};
 
-uint32_t d1_cal_block_length(ISO9796D1Encoding* enc);
-int d1_encode(ISO9796D1Encoding* enc, uint8_t in[], uint32_t in_off,
-              uint32_t in_len, uint8_t block[], uint32_t block_length,
-              uint32_t* real_block_length);
-int d1_decode(ISO9796D1Encoding* enc, uint8_t block[], uint32_t block_length,
-              uint8_t new_block[], uint32_t* new_block_length);
-
-static uint8_t s_shadows[] = {0xe, 0x3, 0x5, 0x8, 0x9, 0x4, 0x2, 0xf,
-                              0x0, 0xd, 0xb, 0x6, 0x7, 0xa, 0xc, 0x1};
-static uint8_t s_inverse[] = {0x8, 0xf, 0x6, 0x1, 0x5, 0x2, 0xb, 0xc,
-                              0x3, 0x4, 0xd, 0xa, 0xe, 0x9, 0x0, 0x7};
-
-uint32_t d1_cal_block_length(ISO9796D1Encoding *enc) {
-  return (enc->bit_size + 7) / 8;
+mbedtls_md_type_t get_md_by_trailer(uint16_t trailer) {
+  if (trailer == TRAILER_IMPLICIT) {
+    return MBEDTLS_MD_NONE;
+  } else if (trailer == TRAILER_SHA1) {
+    return MBEDTLS_MD_SHA1;
+  } else if (trailer == TRAILER_SHA224) {
+    return MBEDTLS_MD_SHA224;
+  } else if (trailer == TRAILER_SHA256) {
+    return MBEDTLS_MD_SHA256;
+  } else if (trailer == TRAILER_SHA384) {
+    return MBEDTLS_MD_SHA384;
+  } else if (trailer == TRAILER_SHA512) {
+    return MBEDTLS_MD_SHA512;
+  } else if (trailer == TRAILER_RIPEMD160) {
+    return MBEDTLS_MD_RIPEMD160;
+  } else {
+    ASSERT(false);
+    return MBEDTLS_MD_NONE;
+  }
 }
 
-int d1_encode(ISO9796D1Encoding *enc, uint8_t in[], uint32_t in_off,
-              uint32_t in_len, uint8_t block[], uint32_t block_length,
-              uint32_t *real_block_length) {
+uint16_t get_trailer_by_md(mbedtls_md_type_t md) {
+  if (md == MBEDTLS_MD_NONE) {
+    return TRAILER_IMPLICIT;
+  } else if (md == MBEDTLS_MD_SHA1) {
+    return TRAILER_SHA1;
+  } else if (md == MBEDTLS_MD_SHA224) {
+    return TRAILER_SHA224;
+  } else if (md == MBEDTLS_MD_SHA256) {
+    return TRAILER_SHA256;
+  } else if (md == MBEDTLS_MD_SHA384) {
+    return TRAILER_SHA384;
+  } else if (md == MBEDTLS_MD_SHA512) {
+    return TRAILER_SHA512;
+  } else if (md == MBEDTLS_MD_RIPEMD160) {
+    return TRAILER_RIPEMD160;
+  } else {
+    ASSERT(false);
+    return 0;
+  }
+}
+
+int validate_signature_iso9796_2(void *_p, const uint8_t *sig_buf,
+                                 size_t sig_size, const uint8_t *msg_buf,
+                                 size_t msg_size, uint8_t *out,
+                                 size_t *out_len) {
+  return 0;
+}
+
+typedef struct ISO97962Encoding {
+  uint32_t key_size;  // RSA key size 1024, 2048, etc
+  mbedtls_md_type_t md;
+  bool implicity;
+
+  uint32_t trailer;
+} ISO97962Encoding;
+
+void iso97962_init(ISO97962Encoding *enc, uint32_t key_size,
+                   mbedtls_md_type_t md, bool implicity) {
+  enc->key_size = key_size;
+  enc->md = md;
+  enc->implicity = implicity;
+
+  enc->trailer = get_trailer_by_md(md);
+}
+
+int iso97962_sign(ISO97962Encoding *enc, uint8_t *msg, int msg_len,
+                  uint8_t *block, int block_len) {
   int err = 0;
-  CHECK2(enc != NULL, ERROR_D1_INVALID_ARG1);
-  CHECK2(block != NULL, ERROR_D1_INVALID_ARG1);
-  CHECK2(in_off < in_len, ERROR_D1_INVALID_ARG1);
-  CHECK2(block_length > 0, ERROR_D1_INVALID_ARG1);
-  CHECK2(real_block_length != NULL, ERROR_D1_INVALID_ARG1);
+  const mbedtls_md_info_t *digest = mbedtls_md_info_from_type(enc->md);
+  int dig_size = digest->size;
+  int t = 0;
+  int delta = 0;
 
-  uint32_t r = enc->pad_bits + 1;
-  uint32_t z = in_len;
-  uint32_t t = (enc->bit_size + 13) / 16;
+  if (enc->trailer == TRAILER_IMPLICIT) {
+    t = 8;
+    delta = block_len - dig_size - 1;
+    mbedtls_md(digest, msg, msg_len, block + delta);
+    block[block_len - 1] = (uint8_t)TRAILER_IMPLICIT;
+  } else {
+    t = 16;
+    delta = block_len - dig_size - 2;
+    mbedtls_md(digest, msg, msg_len, block + delta);
+    block[block_len - 2] = (uint8_t)(enc->trailer >> 8);
+    block[block_len - 1] = (uint8_t)enc->trailer;
+  }
 
-  for (uint32_t i = 0; i < t; i += z) {
-    if (i > (t - z)) {
-      memcpy(block + block_length - t, in + in_off + in_len - (t - i), t - i);
-    } else {
-      memcpy(block + block_length - (i + z), in + in_off, z);
+  uint8_t header = 0;
+  int x = (dig_size + msg_len) * 8 + t + 4 - enc->key_size;
+
+  if (x > 0) {
+    int msg_rem = msg_len - ((x + 7) / 8);
+    header = 0x60;
+    delta -= msg_rem;
+    memcpy(block + delta, msg, msg_rem);
+  } else {
+    header = 0x40;
+    delta -= msg_len;
+    memcpy(block + delta, msg, msg_len);
+  }
+
+  if ((delta - 1) > 0) {
+    for (int i = delta - 1; i != 0; i--) {
+      block[i] = (uint8_t)0xbb;
     }
-  }
-  CHECK2(block_length >= 2 * t, ERROR_D1_INVALID_ARG3);
-  for (uint32_t i = block_length - 2 * t; i != block_length; i += 2) {
-    uint8_t val = block[block_length - t + i / 2];
-    block[i] =
-        (uint8_t)((s_shadows[(val & 0xff) >> 4] << 4) | s_shadows[val & 0x0f]);
-    block[i + 1] = val;
-  }
-
-  CHECK2(block_length >= 2 * z, ERROR_D1_INVALID_ARG3);
-  block[block_length - 2 * z] ^= r;
-  block[block_length - 1] = (uint8_t)((block[block_length - 1] << 4) | 0x06);
-
-  int maxBit = (8 - (enc->bit_size - 1) % 8);
-  int offset = 0;
-
-  if (maxBit != 8) {
-    block[0] &= (0xff >> maxBit);
-    block[0] |= (0x80 >> maxBit);
+    block[delta - 1] ^= (uint8_t)0x01;
+    block[0] = (uint8_t)0x0b;
+    block[0] |= header;
   } else {
-    block[0] = 0x00;
-    block[1] |= 0x80;
-    offset = 1;
+    block[0] = (uint8_t)0x0a;
+    block[0] |= header;
   }
-  if (offset == 1) {
-    memmove(block, block + 1, block_length - 1);
-    *real_block_length = block_length - 1;
-  } else {
-    *real_block_length = block_length;
-  }
-
   err = 0;
 exit:
   return err;
 }
 
-int d1_decode(ISO9796D1Encoding *enc, uint8_t block[], uint32_t block_length,
-              uint8_t new_block[], uint32_t *new_block_length) {
+int iso97962_verify(ISO97962Encoding *enc, uint8_t *block, uint32_t block_len,
+                    uint8_t* origin, uint32_t origin_len,
+                    uint8_t *msg, uint32_t *msg_len) {
   int err = 0;
-  CHECK2(block != NULL, ERROR_D1_INVALID_ARG2);
-  CHECK2(new_block != NULL, ERROR_D1_INVALID_ARG2);
-  CHECK2(new_block_length != NULL && *new_block_length == block_length,
-         ERROR_D1_INVALID_ARG2);
+  const mbedtls_md_info_t *digest = mbedtls_md_info_from_type(enc->md);
+  int hash_len = digest->size;
+  uint8_t hash[hash_len];
 
-  uint32_t r = 1;
-  uint32_t t = (enc->bit_size + 13) / 16;
+  CHECK2(block != NULL && msg != NULL, ERROR_ISO97962_INVALID_ARG1);
+  CHECK2(*msg_len >= block_len, ERROR_ISO97962_INVALID_ARG1);
+  CHECK2(block_len == enc->key_size/8, ERROR_ISO97962_INVALID_ARG1);
 
-  int8_t *ptr = (int8_t *)block;
-  if (block[0] == 0) {
-    memmove(block, block + 1, block_length - 1);
-    block_length -= 1;
-    mbedtls_printf("block[0] == 0, shrinked\n");
+  if (((block[0] & 0xC0) ^ 0x40) != 0) {
+    return ERROR_ISO97962_INVALID_ARG2;
   }
-  CHECK2((block[block_length - 1] & 0x0f) == 0x6, ERROR_D1_NOT_SIX);
 
-  block[block_length - 1] =
-      (uint8_t)(((block[block_length - 1] & 0xff) >> 4) |
-                ((s_inverse[(block[block_length - 2] & 0xff) >> 4]) << 4));
+  if (((block[block_len - 1] & 0xF) ^ 0xC) != 0) {
+    return ERROR_ISO97962_INVALID_ARG3;
+  }
 
-  block[0] = (uint8_t)((s_shadows[(block[1] & 0xff) >> 4] << 4) |
-                       s_shadows[block[1] & 0x0f]);
-  bool boundaryFound = false;
-  int boundary = 0;
+  int delta = 0;
 
-  ASSERT(block_length >= 2 * t);
-  int lower_bound = (int)(block_length - 2 * t);
-  for (int i = block_length - 1; i >= lower_bound; i -= 2) {
-    int val =
-        ((s_shadows[(block[i] & 0xff) >> 4] << 4) | s_shadows[block[i] & 0x0f]);
-    if (((block[i - 1] ^ val) & 0xff) != 0) {
-      if (!boundaryFound) {
-        boundaryFound = true;
-        r = (block[i - 1] ^ val) & 0xff;
-        boundary = i - 1;
-      } else {
-        err = ERROR_D1_INVALID_TSUM;
-        goto exit;
+  if (((block[block_len - 1] & 0xFF) ^ 0xBC) == 0) {
+    delta = 1;
+  } else {
+    int sig_trail =
+        ((block[block_len - 2] & 0xFF) << 8) | (block[block_len - 1] & 0xFF);
+    int trailer_obj = get_trailer_by_md(enc->md);
+
+    if (trailer_obj != 0) {
+      if (sig_trail != trailer_obj) {
+        if (!(trailer_obj == TRAILER_SHA512_256 && sig_trail == 0x40CC)) {
+          return ERROR_ISO97962_INVALID_ARG4;
+        }
       }
+    } else {
+      return ERROR_ISO97962_INVALID_ARG4;
+    }
+
+    delta = 2;
+  }
+
+  // find out how much padding we've got
+  int msg_start = 0;
+
+  for (msg_start = 0; msg_start != block_len; msg_start++) {
+    if (((block[msg_start] & 0x0f) ^ 0x0a) == 0) {
+      break;
     }
   }
-  block[boundary] = 0;
+  msg_start++;
 
-  *new_block_length = (block_length - boundary) / 2;
-
-  for (uint32_t i = 0; i < *new_block_length; i++) {
-    new_block[i] = block[2 * i + boundary + 1];
+  int off = block_len - delta - digest->size;
+  if ((off - msg_start) <= 0) {
+    return ERROR_ISO97962_INVALID_ARG5;
   }
-  enc->pad_bits = r - 1;
 
+  if ((block[0] & 0x20) == 0) {
+    mbedtls_md(digest, block + msg_start, off - msg_start, hash);
+
+    for (int i = 0; i != hash_len; i++) {
+      block[off + i] ^= hash[i];
+      if (block[off + i] != 0) {
+        return ERROR_ISO97962_MISMATCH_HASH;
+      }
+    }
+
+    *msg_len = off - msg_start;
+    memcpy(msg, block + msg_start, *msg_len);
+  } else {
+    mbedtls_md(digest, origin, origin_len, hash);
+
+    for (int i = 0; i != hash_len; i++) {
+      block[off + i] ^= hash[i];
+      if (block[off + i] != 0) {
+        return ERROR_ISO97962_MISMATCH_HASH;
+      }
+    }
+    *msg_len = off - msg_start;
+    memcpy(msg, block + msg_start, *msg_len);
+  }
   err = 0;
 exit:
   return err;

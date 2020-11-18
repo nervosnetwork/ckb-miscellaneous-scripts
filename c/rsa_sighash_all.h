@@ -6,8 +6,9 @@
 // used as algorithm_id
 #define CKB_VERIFY_RSA 1
 #define CKB_VERIFY_SECP256R1 2
+#define CKB_VERIFY_ISO9796_2 3
 // not supported yet
-#define CKB_VERIFY_SECP256R1_RECOVERABLE 3
+#define CKB_VERIFY_SECP256R1_RECOVERABLE 5
 
 #define PLACEHOLDER_SIZE (128)
 

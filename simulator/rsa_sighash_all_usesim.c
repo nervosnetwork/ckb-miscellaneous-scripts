@@ -25,6 +25,8 @@ static unsigned char get_hex(unsigned char c) {
     return c - '0';
   else if (c >= 'A' && c <= 'F')
     return c - 'A' + 10;
+  else if (c >= 'a' && c <= 'f')
+    return c - 'a' + 10;
   else
     return 0;
 }
@@ -348,55 +350,30 @@ int rsa_sighash_all(void) {
   err = 0;
   exit:
   if (err == 0) {
-    mbedtls_printf("rsa_sighash_all() passed. (Ignore the failed messages above)");
+    mbedtls_printf("rsa_sighash_all() passed. (Ignore the failed messages above)\n");
   } else {
-    mbedtls_printf("rsa_sighash_all() failed.");
+    mbedtls_printf("rsa_sighash_all() failed.\n");
   }
   return err;
 }
 
-int d1_test(void) {
-  int err = 0;
-  uint8_t msg3[] = {0x01,0x12,0x23,0x34,0x45,0x56,0x67,0x78,0x89,0x9a,0xab,0xbc,0xcd};
-
-  ISO9796D1Encoding enc;
-  enc.pad_bits = 4;
-  enc.bit_size = 512;
-
-  uint32_t block_length = d1_cal_block_length(&enc);
-  uint32_t real_block_length = block_length;
-  uint8_t block[block_length];
-
-  err = d1_encode(&enc, msg3, 0, sizeof(msg3), block, block_length, &real_block_length);
-  uint8_t new_block[real_block_length];
-
-  CHECK(err);
-  uint32_t new_block_length = real_block_length;
-  err = d1_decode(&enc, block, real_block_length, new_block, &new_block_length);
-  CHECK(err);
-
-  err = memcmp(new_block, msg3, sizeof(msg3));
-  CHECK2(err == 0, -1);
-
-  err = 0;
-  exit:
-  return err;
-}
-
-int d1_test2(void) {
+int iso97962_test2(void) {
   int err = 0;
   const char* N_str = "9cf68418644a5418529373350bafd57ddbf5626527b95e8ea3217d8dac8fbcb7db107eda5e47979b7e4343ed6441950f7fbd921075579104ba081f1a9af950b4c0ee67c2eef2068d9fe2d9d0cfdcbb9be7066e19cc945600e9fd41fc50e771f437ce4bdde63e7acf2a828a4bf38b9f907a252b3dfef550919da1819033f9c619";
   const char* E_str = "10001";
-  const char* sig_str  = "760967295823DCFA837B64674EC8F140271C184252BA824C6655648ECCDD33C6011536998B81136CC24BC29F9AE05C8C49D605AADC8232BA921B31A99D75E60E4F3117192FEA047BB3A3EFB7C94F1A1814A4C9E54BD7AE3D9C2FE6C44E39A2DFDE3030FD313C4828C4F340045FC7B98A12AA5966047478013E83D7E9EB4AABEF";
+  const char* msg_str = "b30d0d9fa0c8bbdf";
+  const char* sig_str  = "2CC6BA3AFA03E71F786886CD9C50F0E2A8EAF8692C9C2683DBA21B362C5713B25CAB283B41752788A1276B71B84C0F8FC2C510A069C4B9B8E6505C6638DDCEC8D83EFF9EF9158E6F49D0035DA5A7C2233EFAED218AA493F6E681AC0B03913B87BE158D24542411378C8269FD6214D0FE67A4E52A10F07F5F06407D406A8D36DA";
+  const char* decrypted_str = "6A5AB9F7974FE3C316215AAA41ED497D81B5D011D8183EF54899C93883225A66FE73FC85D4DF7AB1706526EF3AF6025415F9BA72C8B031B10684613DDDA468800CDB47A7BEB918D505499CE1F1A5ECD45914EEF217FDD667A77854373C499143DEFD7F71FC84600D41FD1FDA87ACBB63F8F416BEE70EB6F32314A6AD3740AFBC";
 
   mbedtls_rsa_context rsa;
   mbedtls_mpi N;
   mbedtls_mpi E;
 
+  uint8_t msg[8];
   uint8_t sig[128];
-  uint8_t msg[128];
-  uint8_t new_block[128];
-  uint32_t sig_size = 0;
+  uint8_t block[128];
+  uint32_t sig_len = 0;
+  uint32_t msg_len = 0;
 
   int alloc_buff_size = 1024 * 1024;
   unsigned char alloc_buff[alloc_buff_size];
@@ -410,13 +387,52 @@ int d1_test2(void) {
   mbedtls_rsa_init( &rsa, MBEDTLS_RSA_PKCS_V15, 0 );
   mbedtls_rsa_import(&rsa, &N, NULL, NULL, NULL, &E);
 
-  sig_size = read_string(sig_str, sig, sizeof(sig));
-  ASSERT(sig_size == 128);
-  err = mbedtls_rsa_public(&rsa, sig, msg);
+  sig_len = read_string(sig_str, sig, sizeof(sig));
+  ASSERT(sig_len == 128);
+  msg_len = read_string(msg_str, msg, sizeof(msg));
+  ASSERT(msg_len == 8);
+
+  err = mbedtls_rsa_public(&rsa, sig, block);
   CHECK(err);
+
+  ISO97962Encoding enc = {0};
+  iso97962_init(&enc, 1024, MBEDTLS_MD_SHA1, false);
+  uint8_t new_msg[128];
+  uint32_t new_msg_len = 128;
+  err = iso97962_verify(&enc, block, sizeof(block), msg, msg_len, new_msg, &new_msg_len);
+  CHECK(err);
+  ASSERT(msg_len == new_msg_len);
+  ASSERT(memcmp(msg, new_msg, msg_len));
 
   err = 0;
   exit:
+  return err;
+}
+
+int iso97962_test(void) {
+  int err = 0;
+  ISO97962Encoding enc = {0};
+  iso97962_init(&enc, 1024, MBEDTLS_MD_SHA1, false);
+  uint8_t msg[] = {1,2,3,4,5,6,7,8};
+  uint32_t msg_len = sizeof(msg);
+
+  uint8_t block[128] = {0};
+  err = iso97962_sign(&enc, msg, sizeof(msg), block, sizeof(block));
+  CHECK(err);
+  uint8_t new_msg[128];
+  uint32_t new_msg_len = 128;
+  err = iso97962_verify(&enc, block, sizeof(block), NULL, 0, new_msg, &new_msg_len);
+  CHECK(err);
+  ASSERT(new_msg_len == msg_len);
+  ASSERT(memcmp(msg, new_msg, msg_len) == 0);
+
+  err = 0;
+  exit:
+  if (err == 0) {
+    mbedtls_printf("iso97962_test() passed.\n");
+  } else {
+    mbedtls_printf("iso97962_test() failed.\n");
+  }
   return err;
 }
 
@@ -435,11 +451,11 @@ int main(int argc, const char *argv[]) {
   err = rsa_sighash_all();
   CHECK(err);
 
-  err = d1_test();
+  err = iso97962_test();
   CHECK(err);
 
-  err = d1_test2();
-  CHECK(err);
+//  err = iso97962_test2();
+//  CHECK(err);
 
   err = 0;
   exit:
