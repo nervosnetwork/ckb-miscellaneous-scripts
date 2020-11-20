@@ -54,6 +54,7 @@
 #define ERROR_RSA_INVALID_KEY_SIZE (-45)
 #define ERROR_RSA_INVALID_BLADE2B_SIZE (-46)
 #define ERROR_RSA_INVALID_ID (-47)
+#define ERROR_RSA_NOT_IMPLEMENTED (-48)
 
 #define ERROR_ISO97962_INVALID_ARG1 (-51)
 #define ERROR_ISO97962_INVALID_ARG2 (-52)
@@ -326,8 +327,12 @@ __attribute__((visibility("default"))) int validate_signature(
     return validate_signature_rsa(prefilled_data, sig_buf, sig_len, msg_buf,
                                   msg_len, output, output_len);
   } else if (id == CKB_VERIFY_SECP256R1) {
-    return validate_signature_secp256r1(prefilled_data, sig_buf, sig_len,
-                                        msg_buf, msg_len, output, output_len);
+    // disable the entry of secp256r1 because the cycles is too high and can't
+    // be used. to reduce code size.
+    //    return validate_signature_secp256r1(prefilled_data, sig_buf, sig_len,
+    //                                        msg_buf, msg_len, output,
+    //                                        output_len);
+    return ERROR_RSA_NOT_IMPLEMENTED;
   } else if (id == CKB_VERIFY_ISO9796_2) {
     return validate_signature_iso9796_2(prefilled_data, sig_buf, sig_len,
                                         msg_buf, msg_len, output, output_len);
@@ -829,9 +834,9 @@ int validate_signature_iso9796_2(void *_p, const uint8_t *sig_buf,
   err = 0;
 exit:
   if (err == 0) {
-    mbedtls_printf("iso97962_test2() passed.\n");
+    mbedtls_printf("validate_signature_iso9796_2() passed.\n");
   } else {
-    mbedtls_printf("iso97962_test2() failed.\n");
+    mbedtls_printf("validate_signature_iso9796_2() failed: %d\n", err);
   }
   return err;
 }

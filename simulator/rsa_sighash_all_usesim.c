@@ -143,7 +143,7 @@ int ecdsa_sighash_random(void) {
     info.algorithm_id = CKB_VERIFY_SECP256R1;
     //    dump_as_carray((uint8_t *)&info, sizeof(info));
     //    dump_as_carray(buf, sizeof(buf));
-    err = validate_signature(NULL, (const unsigned char*)&info, sizeof(info),
+    err = validate_signature_secp256r1(NULL, (const unsigned char*)&info, sizeof(info),
                              buf, sizeof(buf), NULL, NULL);
     CHECK(err);
   }
