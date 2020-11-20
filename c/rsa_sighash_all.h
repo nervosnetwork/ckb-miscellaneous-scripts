@@ -3,12 +3,15 @@
 
 #include <stddef.h>
 
-// used as algorithm_id
+// used as algorithm_id, see below
+// when algorithm id is CKB_VERIFY_RSA, use RsaInfo structure
 #define CKB_VERIFY_RSA 1
+// when algorithm id is CKB_VERIFY_SECP256R1, use Secp256r1Info structure
 #define CKB_VERIFY_SECP256R1 2
+// when algorithm id is CKB_VERIFY_ISO9796_2, use RsaInfo structure
 #define CKB_VERIFY_ISO9796_2 3
 // not supported yet
-#define CKB_VERIFY_SECP256R1_RECOVERABLE 5
+#define CKB_VERIFY_SECP256R1_RECOVERABLE 0xFF
 
 #define PLACEHOLDER_SIZE (128)
 
