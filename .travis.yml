@@ -24,7 +24,6 @@ matrix:
     - name: Build
       script:
         - make all-via-docker
-        - make -C simulator run
         - bash simulator/run-simulator.sh
 
     - name: Format

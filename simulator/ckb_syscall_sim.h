@@ -38,14 +38,18 @@ int ckb_load_header(void* addr, uint64_t* len, size_t offset, size_t index, size
 int ckb_load_witness(void* addr, uint64_t* len, size_t offset, size_t index, size_t source) {
   mol_builder_t b;
   mol_seg_res_t res;
-  uint8_t signature[RSA_VALID_KEY_SIZE1/8] = {0x12, 0x34};
+  RsaInfo info;
+  info.algorithm_id = CKB_VERIFY_RSA;
+  info.key_size = 1024;
+  uint8_t* ptr = (uint8_t*)&info;
+
   if (index > 1) {
     return 1; // CKB_INDEX_OUT_OF_BOUND;
   }
 
   MolBuilder_Bytes_init(&b);
-  for (int i = 0; i < (RSA_VALID_KEY_SIZE1/8); i++) {
-    MolBuilder_Bytes_push(&b, signature[i]);
+  for (int i = 0; i < sizeof(info); i++) {
+    MolBuilder_Bytes_push(&b, ptr[i]);
   }
 
   res = MolBuilder_Bytes_build(b);

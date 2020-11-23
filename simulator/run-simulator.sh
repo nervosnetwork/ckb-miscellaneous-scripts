@@ -11,3 +11,4 @@ cd ../data
 ../build.simulator/sighash_all data2.json
 ../build.simulator/sighash_all data3.json
 ../build.simulator/sudt sudt_data.json
+../build.simulator/rsa_sighash_all

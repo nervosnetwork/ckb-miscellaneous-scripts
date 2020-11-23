@@ -3,6 +3,16 @@
 
 #include <stddef.h>
 
+// used as algorithm_id, see below
+// when algorithm id is CKB_VERIFY_RSA, use RsaInfo structure
+#define CKB_VERIFY_RSA 1
+// when algorithm id is CKB_VERIFY_SECP256R1, use Secp256r1Info structure
+#define CKB_VERIFY_SECP256R1 2
+// when algorithm id is CKB_VERIFY_ISO9796_2, use RsaInfo structure
+#define CKB_VERIFY_ISO9796_2 3
+// not supported yet
+#define CKB_VERIFY_SECP256R1_RECOVERABLE 0xFF
+
 #define PLACEHOLDER_SIZE (128)
 
 /** signature(in witness) memory layout
@@ -22,6 +32,8 @@ signature part is dropped. Here function blake160 returns the first 20 bytes of
 blake2b result.
 */
 typedef struct RsaInfo {
+  uint32_t algorithm_id;  // common header part
+
   // RSA Key Size, in bits. For example, 1024, 2048, 4096
   uint32_t key_size;
   // RSA public key, part E. It's normally very small, OK to use uint32_to hold
@@ -45,6 +57,20 @@ typedef struct RsaInfo {
   uint8_t sig[PLACEHOLDER_SIZE];
 } RsaInfo;
 
+#define SECP256R1_PUBLIC_KEY_SIZE 64
+#define SECP256R1_SIG_SIZE 64
+
+typedef struct Secp256r1Info {
+  uint32_t algorithm_id;  // common header part
+  // X: 32 bytes
+  // Y: 32 bytes
+  // X, Y are in Jacobian coordinates, see: mbedtls_ecp_point
+  uint8_t public_key[SECP256R1_PUBLIC_KEY_SIZE];
+  // r: 32 bytes
+  // s: 32 bytes
+  uint8_t sig[SECP256R1_SIG_SIZE];
+} Secp256r1Info;
+
 /**
  * get offset of signature based on key size.
  */
@@ -53,5 +79,4 @@ uint8_t* get_rsa_signature(RsaInfo* info);
  * get total length of RsaInfo based on key size.
  */
 uint32_t calculate_rsa_info_length(int key_size);
-
 #endif  // CKB_MISCELLANEOUS_SCRIPTS_RSA_SIGHASH_ALL_H
