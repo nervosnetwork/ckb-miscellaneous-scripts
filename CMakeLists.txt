@@ -11,7 +11,7 @@ add_definitions(-DCKB_DECLARATION_ONLY)
 add_definitions(-DCKB_USE_SIM)
 
 
-include_directories(simulator)
+include_directories(deps/ckb-c-stdlib/simulator)
 include_directories(deps/ckb-c-stdlib)
 # include_directories(deps/ckb-c-stdlib/libc)
 # on simulator, we don't use own "libc"
@@ -26,16 +26,16 @@ include_directories(deps/mbedtls/include)
 
 add_library(ckb_simulator
         build/secp256k1_data_info.h
-        simulator/ckb_syscall_simulator.h
-        simulator/ckb_syscall_simulator.c
-        simulator/cJSON.h
-        simulator/cJSON.c
-        simulator/molecule_decl_only.h simulator/blake2b_decl_only.h)
+        deps/ckb-c-stdlib/simulator/ckb_syscall_simulator.h
+        deps/ckb-c-stdlib/simulator/ckb_syscall_simulator.c
+        deps/ckb-c-stdlib/simulator/cJSON.h
+        deps/ckb-c-stdlib/simulator/cJSON.c
+        deps/ckb-c-stdlib/simulator/molecule_decl_only.h deps/ckb-c-stdlib/simulator/blake2b_decl_only.h)
 
 add_executable(sighash_all c/secp256k1_blake2b_sighash_all_dual.c)
 target_link_libraries(sighash_all ckb_simulator)
 
-add_executable(sudt c/simple_udt.c simulator/blake2b_imp.c)
+add_executable(sudt c/simple_udt.c deps/ckb-c-stdlib/simulator/blake2b_imp.c)
 target_link_libraries(sudt ckb_simulator)
 
 add_library(mbedtls
@@ -105,7 +105,7 @@ add_library(mbedtls
     deps/mbedtls/library/version_features.c
     deps/mbedtls/library/xtea.c)
 
-add_executable(rsa_sighash_all simulator/rsa_sighash_all_usesim.c c/rsa_sighash_all.h)
+add_executable(rsa_sighash_all deps/ckb-c-stdlib/simulator/rsa_sighash_all_usesim.c c/rsa_sighash_all.h)
 target_compile_definitions(rsa_sighash_all PUBLIC -D_FILE_OFFSET_BITS=64 -DCKB_DECLARATION_ONLY)
 target_include_directories(rsa_sighash_all PUBLIC deps/ckb-c-stdlib/libc)
 target_link_libraries(rsa_sighash_all mbedtls)
