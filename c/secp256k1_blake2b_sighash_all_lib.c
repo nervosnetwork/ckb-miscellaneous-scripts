@@ -74,6 +74,10 @@ validate_secp256k1_blake2b_sighash_all(const uint8_t *pubkey_hash,
   /* Load signature */
   secp256k1_context context;
   uint8_t secp_data[CKB_SECP256K1_DATA_SIZE];
+  ret = ckb_secp256k1_custom_load_data(secp_data);
+  if (ret != 0) {
+    return ret;
+  }
   ret = ckb_secp256k1_custom_verify_only_initialize(&context, secp_data);
   if (ret != 0) {
     return ret;
