@@ -8,3 +8,10 @@
 	path = deps/mbedtls
 	url = https://github.com/nervosnetwork/mbedtls
 	branch = master
+[submodule "deps/blst"]
+	path = deps/blst
+	url = https://github.com/cryptape/blst.git
+[submodule "deps/ckb-c-stdlib-202106"]
+	path = deps/ckb-c-stdlib-202106
+	url = https://github.com/XuJiandong/ckb-c-stdlib.git
+	branch = add-identity
