@@ -15,6 +15,8 @@ int ckb_exit(signed char);
 #include "ckb_consts.h"
 #include "ckb_syscalls.h"
 #include "rc_lock_mol2.h"
+#include "blst.h"
+
 // clang-format on
 
 #define CHECK2(cond, code) \
@@ -36,7 +38,6 @@ int ckb_exit(signed char);
     }                   \
   } while (0)
 
-
 #define SCRIPT_SIZE 32768
 #define MAX_LOCK_SCRIPT_HASH_COUNT 2048
 
@@ -45,9 +46,13 @@ int ckb_exit(signed char);
 #define ONE_BATCH_SIZE 32768
 #define BLST_PUBKEY_SIZE 48
 #define MAX_WITNESS_SIZE 32768
-#define BLST_SIGNAUTRE_SIZE (48+96)
+#define BLST_SIGNAUTRE_SIZE (48 + 96)
 #define BLAKE2B_BLOCK_SIZE 32
 #define BLAKE160_SIZE 20
+
+const static uint8_t g_dst_label[] =
+    "BLS_SIG_BLS12381G2_XMD:SHA-256_SSWU_RO_NUL_";
+const static size_t g_dst_label_len = 43;
 
 enum CkbIdentityErrorCode {
   ERROR_IDENTITY_ARGUMENTS_LEN = -1,
@@ -61,7 +66,8 @@ enum CkbIdentityErrorCode {
   ERROR_IDENTITY_PUBKEY_BLAKE160_HASH = -31,
   // new error code
   ERROR_IDENTITY_LOCK_SCRIPT_HASH_NOT_FOUND = 70,
-  ERROR_INVALID_MOL_FORMAT
+  ERROR_INVALID_MOL_FORMAT,
+  ERROR_BLST_VERIFY_FAILED,
 };
 
 typedef struct CkbIdentityType {
@@ -73,8 +79,49 @@ typedef struct CkbIdentityType {
 enum IdentityFlagsType {
   IdentityFlagsPubkeyHash = 0,
   IdentityFlagsOwnerLock = 1,
-  IdentityFlagsBls12381 = 0xF,
+  IdentityFlagsBls12381 = 15,
 };
+
+static BLST_ERROR blst_verify(const uint8_t *sig, const uint8_t *pk,
+                              const uint8_t *msg, size_t msg_len) {
+  BLST_ERROR err;
+  blst_p1_affine pk_p1_affine;
+  blst_p1_uncompress(&pk_p1_affine, pk);
+  blst_p2_affine sig_p2_affine;
+  blst_p2_uncompress(&sig_p2_affine, sig);
+
+#if 1
+  // using one-shot
+  printf("using one-shot\n");
+  err =
+      blst_core_verify_pk_in_g1(&pk_p1_affine, &sig_p2_affine, true, msg,
+                                msg_len, g_dst_label, g_dst_label_len, NULL, 0);
+  CHECK(err);
+#else
+  // using pairing interface
+
+  // pubkey must be checked
+  // signature will be checked internally later.
+  printf("using pairing interface\n");
+  uint8_t ctx_buff[blst_pairing_sizeof()];
+
+  bool in_g1 = blst_p1_affine_in_g1(&pk_p1_affine);
+  CHECK2(in_g1, -1);
+
+  blst_pairing *ctx = (blst_pairing *)ctx_buff;
+  blst_pairing_init(ctx, true, g_dst_label, g_dst_label_len);
+  err = blst_pairing_aggregate_pk_in_g1(ctx, &pk_p1_affine, &sig_p2_affine, msg,
+                                        msg_len, NULL, 0);
+  CHECK(err);
+  blst_pairing_commit(ctx);
+
+  bool b = blst_pairing_finalverify(ctx, NULL);
+  CHECK2(b, -1);
+#endif
+
+exit:
+  return err;
+}
 
 static int extract_witness_lock(uint8_t *witness, uint64_t len,
                                 mol_seg_t *lock_bytes_seg) {
@@ -207,20 +254,26 @@ int verify_bls12_381_blake160_sighash_all(uint8_t *pubkey_hash,
 
   blake2b_final(&blake2b_ctx, message, BLAKE2B_BLOCK_SIZE);
 
+  const uint8_t *pubkey = signature_bytes;
+  const uint8_t *sig = pubkey + BLST_PUBKEY_SIZE;
 
-  // blst verify
+  BLST_ERROR err = blst_verify(sig, pubkey, message, BLAKE2B_BLOCK_SIZE);
+  if (err != 0) {
+    return ERROR_BLST_VERIFY_FAILED;
+  }
 
-//  blake2b_init(&blake2b_ctx, BLAKE2B_BLOCK_SIZE);
-//  blake2b_update(&blake2b_ctx, temp, pubkey_size);
-//  blake2b_final(&blake2b_ctx, temp, BLAKE2B_BLOCK_SIZE);
+  unsigned char temp2[BLAKE2B_BLOCK_SIZE];
+  blake2b_state blake2b_ctx2;
+  blake2b_init(&blake2b_ctx2, BLAKE2B_BLOCK_SIZE);
+  blake2b_update(&blake2b_ctx2, pubkey, BLST_PUBKEY_SIZE);
+  blake2b_final(&blake2b_ctx2, temp2, BLAKE2B_BLOCK_SIZE);
 
-//  if (memcmp(pubkey_hash, temp, BLAKE160_SIZE) != 0) {
-//    return ERROR_IDENTITY_PUBKEY_BLAKE160_HASH;
-//  }
-//
+  if (memcmp(pubkey_hash, temp2, BLAKE160_SIZE) != 0) {
+    return ERROR_IDENTITY_PUBKEY_BLAKE160_HASH;
+  }
+
   return 0;
 }
-
 
 int ckb_verify_bls12_381_identity(CkbIdentityType *id, uint8_t *signature) {
   if (id->flags == IdentityFlagsBls12381) {
@@ -335,11 +388,10 @@ int make_witness(WitnessArgsType *witness) {
   return 0;
 }
 
-
 #ifdef CKB_USE_SIM
 int simulator_main() {
 #else
-  int main() {
+int main() {
 #endif
   int err = 0;
   // if has_rc_identity is true, it's one of the following:
@@ -416,5 +468,3 @@ int simulator_main() {
 exit:
   return err;
 }
-
-
