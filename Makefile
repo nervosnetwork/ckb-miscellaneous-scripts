@@ -108,6 +108,8 @@ blst-demo: blst-apply-patch build/blst-demo-no-asm build/blst-demo build/bls12_3
 
 build/bls12_381_sighash_all: c/bls12_381_sighash_all.c build/server-asm.o build/blst_mul_mont_384.o build/blst_mul_mont_384x.o
 	$(CC) $(CFLAGS_BLST) ${LDFLAGS} -o $@ $^
+	$(OBJCOPY) --only-keep-debug $@ $@.debug
+	$(OBJCOPY) --strip-debug --strip-all $@
 
 build/server.o: deps/blst/src/server.c deps/blst/src/no_asm.h
 	$(CC) -c -DCKB_DECLARATION_ONLY $(CFLAGS_BLST)  $(LDFLAGS) -o $@ $<
@@ -158,7 +160,7 @@ clean:
 	cd deps/secp256k1 && [ -f "Makefile" ] && make clean
 	make -C deps/mbedtls/library clean
 	rm -f build/rsa_sighash_all
-	rm -f build/blst-* build/server.o build/server-asm.o
+	rm -f build/blst* build/server.o build/server-asm.o
 
 dist: clean all
 

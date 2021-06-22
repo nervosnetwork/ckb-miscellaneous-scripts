@@ -319,7 +319,8 @@ int parse_args(ArgsType *args, bool has_rc_identity) {
   mol_seg_t args_bytes_seg = MolReader_Bytes_raw_bytes(&args_seg);
   CHECK2(args_bytes_seg.size >= 1, ERROR_IDENTITY_ENCODING);
   uint8_t flags = args_bytes_seg.ptr[0];
-  CHECK2(flags == IdentityFlagsPubkeyHash || flags == IdentityFlagsOwnerLock,
+  CHECK2(flags == IdentityFlagsPubkeyHash || flags == IdentityFlagsOwnerLock ||
+             flags == IdentityFlagsBls12381,
          ERROR_UNKNOWN_FLAGS);
   args->id.flags = flags;
 
@@ -449,7 +450,7 @@ int main() {
   }
 
   uint8_t signature_bytes[BLST_SIGNAUTRE_SIZE] = {0};
-  if (identity.flags == IdentityFlagsPubkeyHash) {
+  if (identity.flags == IdentityFlagsBls12381) {
     CHECK2(witness_lock_existing, ERROR_INVALID_MOL_FORMAT);
 
     BytesOptType signature_opt = witness_lock.t->signature(&witness_lock);
