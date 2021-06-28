@@ -1,0 +1,25 @@
+import blockchain;
+
+array Identity [byte; 21];
+vector SmtProof <byte>;
+
+table SmtProofEntry {
+    mask: byte,
+    proof: SmtProof,
+}
+
+vector SmtProofEntryVec <SmtProofEntry>;
+
+table RcIdentity {
+    identity: Identity,
+    proofs: SmtProofEntryVec,
+}
+
+option RcIdentityOpt (RcIdentity);
+
+// the data structure used in lock field of witness
+table RcLockWitnessLock {
+    signature: BytesOpt,
+    rc_identity: RcIdentityOpt,
+}
+

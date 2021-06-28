@@ -54,3 +54,4 @@ dkms.conf
 build/
 cmake-build-release
 simulator/build.simulator
+tests/blst_rust/target
