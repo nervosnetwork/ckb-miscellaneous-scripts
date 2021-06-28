@@ -2,8 +2,6 @@ use std::collections::HashMap;
 
 use blst::min_pk::*;
 use blst::*;
-use ckb_crypto::secp::{Generator, Privkey, Pubkey};
-use ckb_hash::{Blake2b, Blake2bBuilder};
 use ckb_traits::{CellDataProvider, HeaderProvider};
 use ckb_types::bytes::{BufMut, BytesMut};
 use ckb_types::{
@@ -12,13 +10,11 @@ use ckb_types::{
         cell::{CellMeta, CellMetaBuilder, ResolvedTransaction},
         Capacity, DepType, HeaderView, ScriptHashType, TransactionBuilder, TransactionView,
     },
-    molecule,
     packed::{
         self, Byte32, CellDep, CellInput, CellOutput, OutPoint, Script, WitnessArgs,
         WitnessArgsBuilder,
     },
     prelude::*,
-    H256 as CkbH256,
 };
 use lazy_static::lazy_static;
 use rand::prelude::*;
@@ -37,6 +33,7 @@ pub const SIGNATURE_SIZE: usize = 144;
 pub const ERROR_ENCODING: i8 = -2;
 pub const ERROR_WITNESS_SIZE: i8 = -22;
 pub const ERROR_PUBKEY_BLAKE160_HASH: i8 = -31;
+pub const ERROR_BLST_VERIFY_FAILED: i8 = 72;
 pub const ERROR_OUTPUT_AMOUNT_NOT_ENOUGH: i8 = -42;
 pub const ERROR_NO_PAIR: i8 = -44;
 pub const ERROR_DUPLICATED_INPUTS: i8 = -45;
@@ -72,7 +69,7 @@ pub fn gen_random_out_point(rng: &mut ThreadRng) -> OutPoint {
 // * build extension script without upgrading, set is_type to false
 // * build RCE cell, is_type = true. Only the Script.code_hash is kept for further use.
 //   when in this case, to make "args" passed in unique
-fn build_script(
+fn _build_script(
     dummy: &mut DummyDataLoader,
     tx_builder: TransactionBuilder,
     is_type: bool,
@@ -223,7 +220,14 @@ pub fn sign_tx_by_input_group(
                 });
                 blake2b.finalize(&mut message);
 
-                let sig = config.blst_data.sign2(&message[..]);
+                let mut sig = config.blst_data.sign2(&message[..]);
+                if config.scheme == TestScheme::WrongSignature {
+                    sig[sig.len() - 1] ^= 0x1;
+                }
+                if config.scheme == TestScheme::WrongPubKey {
+                    sig[0] ^= 0x1;
+                }
+
                 let sig_bytes = Bytes::copy_from_slice(&sig[..]);
                 let witness_lock = gen_witness_lock(sig_bytes, &identity);
                 witness
@@ -434,6 +438,8 @@ pub enum TestScheme {
 
     OwnerLockMismatched,
     OwnerLockWithoutWitness,
+    WrongSignature,
+    WrongPubKey,
 }
 
 #[derive(Copy, Clone, PartialEq)]
