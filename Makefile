@@ -10,10 +10,16 @@ CFLAGS_MBEDTLS := -fPIC -Os -fno-builtin-printf -nostdinc -nostdlib -nostartfile
 LDFLAGS_MBEDTLS := -Wl,-static -Wl,--gc-sections
 PASSED_MBEDTLS_CFLAGS := -Os -fPIC -nostdinc -nostdlib -DCKB_DECLARATION_ONLY -I ../../ckb-c-stdlib/libc -fdata-sections -ffunction-sections
 
+CFLAGS_BLST := -fno-builtin-printf -Ideps/blst/bindings $(subst ckb-c-stdlib,ckb-c-stdlib-202106,$(CFLAGS))
+CKB_VM_CLI := ckb-vm-b-cli
+
+MOLC := moleculec
+MOLC_VERSION := 0.7.0
+
 # docker pull nervos/ckb-riscv-gnu-toolchain:gnu-bionic-20191012
 BUILDER_DOCKER := nervos/ckb-riscv-gnu-toolchain@sha256:aae8a3f79705f67d505d1f1d5ddc694a4fd537ed1c7e9622420a470d59ba2ec3
 
-all: build/htlc build/secp256k1_blake2b_sighash_all_lib.so build/or build/simple_udt build/secp256k1_blake2b_sighash_all_dual build/and build/open_transaction build/rsa_sighash_all
+all: build/htlc build/secp256k1_blake2b_sighash_all_lib.so build/or build/simple_udt build/secp256k1_blake2b_sighash_all_dual build/and build/open_transaction build/rsa_sighash_all blst-demo
 
 all-via-docker:
 	docker run --rm -v `pwd`:/code ${BUILDER_DOCKER} bash -c "cd /code && make"
@@ -95,6 +101,51 @@ $(SECP256K1_SRC):
 		CC=$(CC) LD=$(LD) ./configure --with-bignum=no --enable-ecmult-static-precomputation --enable-endomorphism --enable-module-recovery --host=$(TARGET) && \
 		make src/ecmult_static_pre_context.h src/ecmult_static_context.h
 
+blst-apply-patch:
+	cd deps/blst; git apply ../../blst/blst.patch || echo "applying patch: ignore errors if applied."
+
+blst-demo: blst-apply-patch build/blst-demo-no-asm build/blst-demo build/bls12_381_sighash_all
+
+build/bls12_381_sighash_all: c/bls12_381_sighash_all.c build/server-asm.o build/blst_mul_mont_384.o build/blst_mul_mont_384x.o
+	$(CC) $(CFLAGS_BLST) ${LDFLAGS} -o $@ $^
+	$(OBJCOPY) --only-keep-debug $@ $@.debug
+	$(OBJCOPY) --strip-debug --strip-all $@
+
+build/server.o: deps/blst/src/server.c deps/blst/src/no_asm.h
+	$(CC) -c -DCKB_DECLARATION_ONLY $(CFLAGS_BLST)  $(LDFLAGS) -o $@ $<
+
+build/server-asm.o: deps/blst/src/server.c deps/blst/src/no_asm.h
+	$(CC) -c -DUSE_MUL_MONT_384_ASM -DCKB_DECLARATION_ONLY $(CFLAGS_BLST) $(LDFLAGS) -o $@ $<
+
+build/blst_mul_mont_384.o: blst/blst_mul_mont_384.riscv.S
+	$(CC) -c -DCKB_DECLARATION_ONLY $(CFLAGS_BLST) -o $@ $^
+
+build/blst_mul_mont_384x.o: blst/blst_mul_mont_384x.riscv.S
+	$(CC) -c -DCKB_DECLARATION_ONLY $(CFLAGS_BLST) -o $@ $^
+
+build/blst-demo-no-asm: tests/blst/main.c build/server.o
+	$(CC) $(CFLAGS_BLST) ${LDFLAGS} -o $@ $^
+
+build/blst-demo: tests/blst/main.c build/server-asm.o build/blst_mul_mont_384.o build/blst_mul_mont_384x.o
+	$(CC) $(CFLAGS_BLST) ${LDFLAGS} -o $@ $^
+
+run-blst-no-asm:
+	$(CKB_VM_CLI) --bin build/blst-demo-no-asm
+
+run-blst:
+	$(CKB_VM_CLI) --bin build/blst-demo
+
+install-ckb-vm-cli:
+	echo "start to install tool: ckb-vm-cli"
+	cargo install --git https://github.com/XuJiandong/ckb-vm-cli.git --branch b-extension
+
+rc_lock_mol:
+	${MOLC} --language rust --schema-file c/rc_lock.mol | rustfmt > tests/blst_rust/src/rc_lock.rs
+	${MOLC} --language c --schema-file c/rc_lock.mol > c/rc_lock_mol.h
+	${MOLC} --language - --schema-file c/rc_lock.mol --format json > build/rc_lock_mol2.json
+	moleculec-c2 --input build/rc_lock_mol2.json | clang-format -style=Google > c/rc_lock_mol2.h
+
+
 fmt:
 	clang-format -i -style=Google $(wildcard c/*.h c/*.c)
 	git diff --exit-code $(wildcard c/*.h c/*.c)
@@ -109,6 +160,7 @@ clean:
 	cd deps/secp256k1 && [ -f "Makefile" ] && make clean
 	make -C deps/mbedtls/library clean
 	rm -f build/rsa_sighash_all
+	rm -f build/blst* build/server.o build/server-asm.o
 
 dist: clean all
 
