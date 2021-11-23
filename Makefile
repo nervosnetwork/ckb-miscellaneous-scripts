@@ -95,19 +95,21 @@ build/rsa_sighash_all: c/rsa_sighash_all.c deps/mbedtls/library/libmbedcrypto.a
 	$(OBJCOPY) --strip-debug --strip-all $@
 
 ### static library
+build/librsa_secp256k1.o: c/librsa_secp256k1.c
+	$(CC) $(CFLAGS_MBEDTLS) -c -I include -D__SHARED_LIBRARY__ -o $@ $<
 
 build/rsa_sighash_all_static.o: c/rsa_sighash_all_static.c
-	$(CC) $(CFLAGS_MBEDTLS) -c -DSTATIC_LIB -DCKB_DECLARATION_ONLY -D__SHARED_LIBRARY__ -o $@ $<
+	$(CC) $(CFLAGS_MBEDTLS) -c -I include -DCKB_DECLARATION_ONLY -D__SHARED_LIBRARY__ -o $@ $<
 
 build/secp256k1_blake2b_sighash_all_static.o:  c/secp256k1_blake2b_sighash_all_static.c build/secp256k1_data_info.h
-	$(CC) $(CFLAGS) -c -DSTATIC_LIB -DCKB_DECLARATION_ONLY -D__SHARED_LIBRARY__ -o $@ $<
+	$(CC) $(CFLAGS) -c -I include -DCKB_DECLARATION_ONLY -D__SHARED_LIBRARY__ -o $@ $<
 
-build/librsa_secp256k1.a: build/rsa_sighash_all_static.o build/secp256k1_blake2b_sighash_all_static.o deps/mbedtls/library/libmbedcrypto.a
+build/librsa_secp256k1.a: build/librsa_secp256k1.o build/rsa_sighash_all_static.o build/secp256k1_blake2b_sighash_all_static.o deps/mbedtls/library/libmbedcrypto.a
 	cp deps/mbedtls/library/libmbedcrypto.a build/librsa_secp256k1.a
-	$(AR) r build/librsa_secp256k1.a build/rsa_sighash_all_static.o build/secp256k1_blake2b_sighash_all_static.o
+	$(AR) r build/librsa_secp256k1.a build/librsa_secp256k1.o build/rsa_sighash_all_static.o build/secp256k1_blake2b_sighash_all_static.o
 
 static-clean:
-	rm -f build/rsa_sighash_all_static.o build/secp256k1_blake2b_sighash_all_static.o build/librsa_secp256k1.a
+	rm -f build/librsa_secp256k1.o build/rsa_sighash_all_static.o build/secp256k1_blake2b_sighash_all_static.o build/librsa_secp256k1.a
 
 simulator/build/rsa_sighash_all_test: simulator/rsa_sighash_all_usesim.c deps/mbedtls/library/libmbedcrypto.a
 	riscv64-unknown-elf-gcc -DRSA_RUN_TEST $(CFLAGS_MBEDTLS) ${LDFLAGS_MBEDTLS} -o $@ $^

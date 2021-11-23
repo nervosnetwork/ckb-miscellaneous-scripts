@@ -18,7 +18,7 @@ all-via-docker:
 	docker run --rm -v `pwd`:/code ${BUILDER_DOCKER} bash -c "cd /code/tests/static-libraries && make"
 
 ../../build/test_static_lib: test_static_lib.c
-	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ ../../build/librsa_secp256k1.a
+	$(CC) -DCKB_DECLARATION_ONLY $(CFLAGS) $(LDFLAGS) -o $@ $^ ../../build/librsa_secp256k1.a
 
 clean:
 	rm -f ../../build/test_static_lib

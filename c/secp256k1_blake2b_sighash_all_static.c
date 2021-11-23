@@ -22,4 +22,5 @@
 #define load_and_hash_witness load_and_hash_witness_secp256k1
 #define extract_witness_lock extract_witness_lock_secp256k1
 #define main not_main
+#include "rsa_secp256k1.h"
 #include "secp256k1_blake2b_sighash_all_dual.c"

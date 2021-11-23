@@ -21,4 +21,5 @@
 #define load_and_hash_witness load_and_hash_witness_rsa
 #define load_prefilled_data load_prefilled_data_rsa
 #define extract_witness_lock extract_witness_lock_rsa
+#include "rsa_secp256k1.h"
 #include "rsa_sighash_all.c"
