@@ -5,7 +5,5 @@
 
 #include "blockchain.h"
 #include "blake2b.h"
-#include "ckb_syscalls.h"
 // smt
 #include "ckb_smt.c"
-
