@@ -96,7 +96,7 @@ build/rsa_sighash_all: c/rsa_sighash_all.c deps/mbedtls/library/libmbedcrypto.a
 
 ### static library
 build/librsa_secp256k1.o: c/librsa_secp256k1.c
-	$(CC) $(CFLAGS_MBEDTLS) -c -I include -DCKB_DECLARATION_ONL -D__SHARED_LIBRARY__ -o $@ $<
+	$(CC) $(CFLAGS_MBEDTLS) -c -I include -DCKB_DECLARATION_ONLY -D__SHARED_LIBRARY__ -o $@ $<
 
 build/rsa_sighash_all_static.o: c/rsa_sighash_all_static.c
 	$(CC) $(CFLAGS_MBEDTLS) -c -I include -DCKB_DECLARATION_ONLY -D__SHARED_LIBRARY__ -o $@ $<
