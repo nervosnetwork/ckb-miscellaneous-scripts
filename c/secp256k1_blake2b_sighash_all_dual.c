@@ -118,7 +118,8 @@ __attribute__((visibility("default"))) int validate_signature(
   if (message_size != 32) {
     return ERROR_INVALID_MESSAGE_SIZE;
   }
-  if (*output_len < PUBKEY_SIZE) {
+  // uncompressed key
+  if (*output_len < 65) {
     return ERROR_INVALID_OUTPUT_SIZE;
   }
   secp256k1_context context;
@@ -142,7 +143,7 @@ __attribute__((visibility("default"))) int validate_signature(
   }
 
   if (secp256k1_ec_pubkey_serialize(&context, output, output_len, &pubkey,
-                                    SECP256K1_EC_COMPRESSED) != 1) {
+                                    SECP256K1_EC_UNCOMPRESSED) != 1) {
     return ERROR_SECP_SERIALIZE_PUBKEY;
   }
   return CKB_SUCCESS;
