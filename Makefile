@@ -102,6 +102,8 @@ build/rsa_sighash_all_static.o: c/rsa_sighash_all_static.c
 	$(CC) $(CFLAGS_MBEDTLS) -c -I include -DCKB_DECLARATION_ONLY -D__SHARED_LIBRARY__ -o $@ $<
 
 build/secp256k1_blake2b_sighash_all_static.o:  c/secp256k1_blake2b_sighash_all_static.c build/secp256k1_data_info.h
+	cp c/ecmult_static_context.h deps/secp256k1/src
+	cp c/ecmult_static_pre_context.h deps/secp256k1/src
 	$(CC) $(CFLAGS) -c -I include -DCKB_DECLARATION_ONLY -D__SHARED_LIBRARY__ -o $@ $<
 
 build/librsa_secp256k1.a: build/librsa_secp256k1.o build/rsa_sighash_all_static.o build/secp256k1_blake2b_sighash_all_static.o deps/mbedtls/library/libmbedcrypto.a
