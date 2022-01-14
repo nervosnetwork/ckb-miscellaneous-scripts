@@ -23,6 +23,10 @@ all: build/htlc build/secp256k1_blake2b_sighash_all_lib.so build/or build/simple
 
 all-via-docker:
 	docker run --rm -v `pwd`:/code ${BUILDER_DOCKER} bash -c "cd /code && make"
+	docker run --rm -v `pwd`:/code ${BUILDER_DOCKER} bash -c "cd /code/deps/ANSSI-libecc && make"
+	docker run --rm -v `pwd`:/code ${BUILDER_DOCKER} bash -c "cd /code/deps/Lay2-libecc && make"
+	cp deps/ANSSI-libecc/build/ec_verify_once build/ANSSI_verify
+	cp deps/Lay2-libecc/build/ec_verify_once build/Lay2_verify
 
 build/htlc: c/htlc.c build/secp256k1_blake2b_sighash_all_lib.h
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $<

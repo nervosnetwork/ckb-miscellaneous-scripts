@@ -15,3 +15,9 @@
 	path = deps/ckb-c-stdlib-202106
 	url = https://github.com/XuJiandong/ckb-c-stdlib.git
 	branch = add-identity
+[submodule "deps/ANSSI-libecc"]
+	path = deps/ANSSI-libecc
+	url = https://github.com/Moulcc/ANSSI-libecc.git
+[submodule "deps/Lay2-libecc"]
+	path = deps/Lay2-libecc
+	url = https://github.com/Moulcc/Lay2-libecc.git
