@@ -38,7 +38,7 @@ int ckb_exit(signed char);
     }                   \
   } while (0)
 
-//ddd 1. how to determain the script size
+//ddd 1. how to determain the script size :todo
 #define SCRIPT_SIZE 32768
 #define MAX_LOCK_SCRIPT_HASH_COUNT 2048
 
@@ -46,19 +46,21 @@ int ckb_exit(signed char);
 #define RECID_INDEX 64
 #define ONE_BATCH_SIZE 32768
 
-//ddd 2. check the secp256r1's pubkey size
-#define BLST_PUBKEY_SIZE 48
+//ddd 2. check the secp256r1's pubkey size :tocheck
+#define SECP256R1_PUBKEY_SIZE 48
 #define MAX_WITNESS_SIZE 32768
-#define BLST_SIGNAUTRE_SIZE (48 + 96)
+#define SECP256R1_SIGNAUTRE_SIZE (48 + 96)
 #define BLAKE2B_BLOCK_SIZE 32
 #define BLAKE160_SIZE 20
 
-//ddd 3. this label needs to change.
+//ddd 3. this label needs to change. :tocheck
 const static uint8_t g_dst_label[] =
-    "BLS_SIG_BLS12381G2_XMD:SHA-256_SSWU_RO_NUL_";
-const static size_t g_dst_label_len = 43;
+	"SECP256R1:SHA-256";
+const static size_t g_dst_label_len = 17;
 
-//ddd 4. need to add Identity Error code later
+
+
+//ddd 4. need to add Identity Error code later :todo
 enum CkbIdentityErrorCode {
   ERROR_IDENTITY_ARGUMENTS_LEN = -1,
   ERROR_IDENTITY_ENCODING = -2,
@@ -88,43 +90,14 @@ enum IdentityFlagsType {
 };
 
 //ddd 5. need to define similar SECP256R1_ERR and call verify_secp256r1_once
-static BLST_ERROR blst_verify(const uint8_t *sig, const uint8_t *pk,
-                              const uint8_t *msg, size_t msg_len) {
-  BLST_ERROR err;
-  blst_p1_affine pk_p1_affine;
-  blst_p1_uncompress(&pk_p1_affine, pk);
-  blst_p2_affine sig_p2_affine;
-  blst_p2_uncompress(&sig_p2_affine, sig);
+// :to add ERR, and review CHECK
+static SECP256R1_ERROR secp256r1_verify(const uint8_t *sig, const uint8_t *pk,
+										const uint8_t *msg, size_t msg_len) {
+		SECP256R1_ERROR err;
+		printf("using one-shot\n");
+		err = verify_secp256r1_once(sig, pk, msg, msg_len);
 
-#if 1
-  // using one-shot
-  printf("using one-shot\n");
-  err =
-      blst_core_verify_pk_in_g1(&pk_p1_affine, &sig_p2_affine, true, msg,
-                                msg_len, g_dst_label, g_dst_label_len, NULL, 0);
-  CHECK(err);
-#else
-  // using pairing interface
-
-  // pubkey must be checked
-  // signature will be checked internally later.
-  printf("using pairing interface\n");
-  uint8_t ctx_buff[blst_pairing_sizeof()];
-
-  bool in_g1 = blst_p1_affine_in_g1(&pk_p1_affine);
-  CHECK2(in_g1, -1);
-
-  blst_pairing *ctx = (blst_pairing *)ctx_buff;
-  blst_pairing_init(ctx, true, g_dst_label, g_dst_label_len);
-  err = blst_pairing_aggregate_pk_in_g1(ctx, &pk_p1_affine, &sig_p2_affine, msg,
-                                        msg_len, NULL, 0);
-  CHECK(err);
-  blst_pairing_commit(ctx);
-
-  bool b = blst_pairing_finalverify(ctx, NULL);
-  CHECK2(b, -1);
-#endif
-
+		CHECK(err);
 exit:
   return err;
 }
@@ -172,8 +145,10 @@ int load_and_hash_witness(blake2b_state *ctx, size_t start, size_t index,
 }
 
 //ddd 7. mainly work
-int verify_bls12_381_blake160_sighash_all(uint8_t *pubkey_hash,
-                                          uint8_t *signature_bytes) {
+
+
+int verify_secp256r1_blake160_sighash_all(uint8_t *pubkey_hash,
+									uint8_t *signature_bytes) {
   int ret;
   uint64_t len = 0;
   unsigned char temp[MAX_WITNESS_SIZE];
@@ -264,9 +239,10 @@ int verify_bls12_381_blake160_sighash_all(uint8_t *pubkey_hash,
   const uint8_t *pubkey = signature_bytes;
   const uint8_t *sig = pubkey + BLST_PUBKEY_SIZE;
 
-  BLST_ERROR err = blst_verify(sig, pubkey, message, BLAKE2B_BLOCK_SIZE);
-  if (err != 0) {
-    return ERROR_BLST_VERIFY_FAILED;
+//ddd 7-1 need an error code here :todo
+  SECP256R1_ERROR err = secp256r1_verify(sig, pubkey, message, BLAKE2B_BLOCK_SIZE);
+    if (err != 0) {
+    return -1;
   }
 
   unsigned char temp2[BLAKE2B_BLOCK_SIZE];
@@ -283,9 +259,10 @@ int verify_bls12_381_blake160_sighash_all(uint8_t *pubkey_hash,
 }
 
 //ddd 8.ckb_verify_secp256r1_identity
-int ckb_verify_bls12_381_identity(CkbIdentityType *id, uint8_t *signature) {
+int ckb_verify_secp256r1_identity(CkbIdentityType *id, uint8_t *signature) {
+  //ddd 8-1 need a flag here. :todo	
   if (id->flags == IdentityFlagsBls12381) {
-    return verify_bls12_381_blake160_sighash_all(id->blake160, signature);
+    return verify_secp256r1_blake160_sighash_all(id->blake160, signature);
   } else {
     return CKB_INVALID_DATA;
   }
@@ -459,6 +436,7 @@ int main() {
   }
 
   uint8_t signature_bytes[BLST_SIGNAUTRE_SIZE] = {0};
+  //ddd 9-1 change falgs : todo
   if (identity.flags == IdentityFlagsBls12381) {
     CHECK2(witness_lock_existing, ERROR_INVALID_MOL_FORMAT);
 
@@ -466,13 +444,13 @@ int main() {
     mol2_cursor_t signature_cursor = signature_opt.t->unwrap(&signature_opt);
 
     uint32_t read_len =
-        mol2_read_at(&signature_cursor, signature_bytes, BLST_SIGNAUTRE_SIZE);
-    CHECK2(read_len == BLST_SIGNAUTRE_SIZE, ERROR_INVALID_MOL_FORMAT);
+        mol2_read_at(&signature_cursor, signature_bytes, SECP256R1_SIGNAUTRE_SIZE);
+    CHECK2(read_len == SECP256R1_SIGNAUTRE_SIZE, ERROR_INVALID_MOL_FORMAT);
   } else {
     return ERROR_IDENTITY_ENCODING;
   }
 
-  err = ckb_verify_bls12_381_identity(&identity, signature_bytes);
+  err = ckb_verify_secp256r1_identity(&identity, signature_bytes);
   CHECK(err);
 
 exit:
