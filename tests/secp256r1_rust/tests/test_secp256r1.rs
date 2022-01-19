@@ -23,6 +23,7 @@ mod misc;
 
 lazy_static! {}
 
+//mainly work
 #[test]
 fn test_sighash_all_unlock() {
     let mut data_loader = DummyDataLoader::new();
@@ -80,6 +81,7 @@ fn test_sighash_all_unlock_failed_wrong_pubkey() {
     );
 }
 
+// delete this one.
 #[test]
 fn test_blst() {
     let bd = BlstData::new();

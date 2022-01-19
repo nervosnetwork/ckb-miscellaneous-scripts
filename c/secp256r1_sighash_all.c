@@ -38,22 +38,27 @@ int ckb_exit(signed char);
     }                   \
   } while (0)
 
+//ddd 1. how to determain the script size
 #define SCRIPT_SIZE 32768
 #define MAX_LOCK_SCRIPT_HASH_COUNT 2048
 
 #define CKB_IDENTITY_LEN 21
 #define RECID_INDEX 64
 #define ONE_BATCH_SIZE 32768
+
+//ddd 2. check the secp256r1's pubkey size
 #define BLST_PUBKEY_SIZE 48
 #define MAX_WITNESS_SIZE 32768
 #define BLST_SIGNAUTRE_SIZE (48 + 96)
 #define BLAKE2B_BLOCK_SIZE 32
 #define BLAKE160_SIZE 20
 
+//ddd 3. this label needs to change.
 const static uint8_t g_dst_label[] =
     "BLS_SIG_BLS12381G2_XMD:SHA-256_SSWU_RO_NUL_";
 const static size_t g_dst_label_len = 43;
 
+//ddd 4. need to add Identity Error code later
 enum CkbIdentityErrorCode {
   ERROR_IDENTITY_ARGUMENTS_LEN = -1,
   ERROR_IDENTITY_ENCODING = -2,
@@ -82,6 +87,7 @@ enum IdentityFlagsType {
   IdentityFlagsBls12381 = 15,
 };
 
+//ddd 5. need to define similar SECP256R1_ERR and call verify_secp256r1_once
 static BLST_ERROR blst_verify(const uint8_t *sig, const uint8_t *pk,
                               const uint8_t *msg, size_t msg_len) {
   BLST_ERROR err;
@@ -165,6 +171,7 @@ int load_and_hash_witness(blake2b_state *ctx, size_t start, size_t index,
   return CKB_SUCCESS;
 }
 
+//ddd 7. mainly work
 int verify_bls12_381_blake160_sighash_all(uint8_t *pubkey_hash,
                                           uint8_t *signature_bytes) {
   int ret;
@@ -275,6 +282,7 @@ int verify_bls12_381_blake160_sighash_all(uint8_t *pubkey_hash,
   return 0;
 }
 
+//ddd 8.ckb_verify_secp256r1_identity
 int ckb_verify_bls12_381_identity(CkbIdentityType *id, uint8_t *signature) {
   if (id->flags == IdentityFlagsBls12381) {
     return verify_bls12_381_blake160_sighash_all(id->blake160, signature);
@@ -389,6 +397,7 @@ int make_witness(WitnessArgsType *witness) {
   return 0;
 }
 
+//ddd 9.change blst to secp256r1
 #ifdef CKB_USE_SIM
 int simulator_main() {
 #else
