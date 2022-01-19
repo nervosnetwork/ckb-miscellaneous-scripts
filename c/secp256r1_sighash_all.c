@@ -15,7 +15,7 @@ int ckb_exit(signed char);
 #include "ckb_consts.h"
 #include "ckb_syscalls.h"
 #include "rc_lock_mol2.h"
-#include "blst.h"
+#include "ec_secp256r1_core.h"
 
 // clang-format on
 
@@ -59,8 +59,7 @@ const static uint8_t g_dst_label[] =
 const static size_t g_dst_label_len = 17;
 
 
-
-//ddd 4. need to add Identity Error code later :todo
+//ddd 4. need to add Identity Error code later :seems no need to change
 enum CkbIdentityErrorCode {
   ERROR_IDENTITY_ARGUMENTS_LEN = -1,
   ERROR_IDENTITY_ENCODING = -2,
@@ -83,14 +82,14 @@ typedef struct CkbIdentityType {
   uint8_t blake160[20];
 } CkbIdentityType;
 
+//ddd change indentity flag
 enum IdentityFlagsType {
   IdentityFlagsPubkeyHash = 0,
   IdentityFlagsOwnerLock = 1,
-  IdentityFlagsBls12381 = 15,
+  IdentityFlagsSecp256r1 = 15,
 };
 
-//ddd 5. need to define similar SECP256R1_ERR and call verify_secp256r1_once
-// :to add ERR, and review CHECK
+//ddd 5. need to define similar SECP256R1_ERR and call verify_secp256r1_once :done
 static SECP256R1_ERROR secp256r1_verify(const uint8_t *sig, const uint8_t *pk,
 										const uint8_t *msg, size_t msg_len) {
 		SECP256R1_ERROR err;
@@ -144,9 +143,7 @@ int load_and_hash_witness(blake2b_state *ctx, size_t start, size_t index,
   return CKB_SUCCESS;
 }
 
-//ddd 7. mainly work
-
-
+//ddd 7. mainly work : done
 int verify_secp256r1_blake160_sighash_all(uint8_t *pubkey_hash,
 									uint8_t *signature_bytes) {
   int ret;
@@ -239,7 +236,6 @@ int verify_secp256r1_blake160_sighash_all(uint8_t *pubkey_hash,
   const uint8_t *pubkey = signature_bytes;
   const uint8_t *sig = pubkey + BLST_PUBKEY_SIZE;
 
-//ddd 7-1 need an error code here :todo
   SECP256R1_ERROR err = secp256r1_verify(sig, pubkey, message, BLAKE2B_BLOCK_SIZE);
     if (err != 0) {
     return -1;
@@ -260,8 +256,7 @@ int verify_secp256r1_blake160_sighash_all(uint8_t *pubkey_hash,
 
 //ddd 8.ckb_verify_secp256r1_identity
 int ckb_verify_secp256r1_identity(CkbIdentityType *id, uint8_t *signature) {
-  //ddd 8-1 need a flag here. :todo	
-  if (id->flags == IdentityFlagsBls12381) {
+  if (id->flags == IdentityFlagsSecp256r1) {
     return verify_secp256r1_blake160_sighash_all(id->blake160, signature);
   } else {
     return CKB_INVALID_DATA;
@@ -305,7 +300,7 @@ int parse_args(ArgsType *args, bool has_rc_identity) {
   CHECK2(args_bytes_seg.size >= 1, ERROR_IDENTITY_ENCODING);
   uint8_t flags = args_bytes_seg.ptr[0];
   CHECK2(flags == IdentityFlagsPubkeyHash || flags == IdentityFlagsOwnerLock ||
-             flags == IdentityFlagsBls12381,
+             flags == IdentityFlagsSecp256r1,
          ERROR_UNKNOWN_FLAGS);
   args->id.flags = flags;
 
@@ -436,8 +431,7 @@ int main() {
   }
 
   uint8_t signature_bytes[BLST_SIGNAUTRE_SIZE] = {0};
-  //ddd 9-1 change falgs : todo
-  if (identity.flags == IdentityFlagsBls12381) {
+  if (identity.flags == IdentityFlagsSecp256r1) {
     CHECK2(witness_lock_existing, ERROR_INVALID_MOL_FORMAT);
 
     BytesOptType signature_opt = witness_lock.t->signature(&witness_lock);
