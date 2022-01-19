@@ -64,11 +64,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "blst_test"
+name = "secp256r1_test"
 version = "0.1.0"
 dependencies = [
  "blake2b-rs",
- "blst",
  "ckb-crypto",
  "ckb-error",
  "ckb-hash",

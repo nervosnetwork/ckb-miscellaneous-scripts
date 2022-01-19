@@ -1,8 +1,6 @@
 use std::collections::HashMap;
 
-//ddd 1. useless lib
-use blst::min_pk::*;
-use blst::*;
+//ddd 1. need to delete: done
 use ckb_traits::{CellDataProvider, HeaderProvider};
 use ckb_types::bytes::{BufMut, BytesMut};
 use ckb_types::{
@@ -21,8 +19,8 @@ use lazy_static::lazy_static;
 use rand::prelude::*;
 use rand::Rng;
 
-//ddd 2. need write one
-use blst_test::rc_lock::RcLockWitnessLock;
+//ddd 2. need to take place: done
+use secp256r1_test::rc_lock::RcLockWitnessLock;
 
 pub const BLAKE2B_KEY: &[u8] = &[];
 pub const BLAKE2B_LEN: usize = 32;
@@ -30,7 +28,7 @@ pub const PERSONALIZATION: &[u8] = b"ckb-default-hash";
 
 pub const MAX_CYCLES: u64 = std::u64::MAX;
 
-//ddd 3. get secp256r1 signature size
+//ddd 3. get secp256r1 signature size :todo
 pub const SIGNATURE_SIZE: usize = 144;
 
 // errors
@@ -50,8 +48,8 @@ pub const ERROR_RCE_EMERGENCY_HALT: i8 = 54;
 
 //ddd 4. change to ec_secp256r1_core
 lazy_static! {
-    pub static ref BLST_LOCK: Bytes =
-        Bytes::from(&include_bytes!("../../../build/bls12_381_sighash_all")[..]);
+    pub static ref SECP2561R1_LOCK: Bytes =
+        Bytes::from(&include_bytes!("../../../build/ec_secp256r1_core")[..]);
 }
 
 pub fn gen_random_out_point(rng: &mut ThreadRng) -> OutPoint {
@@ -188,7 +186,7 @@ pub fn sign_tx(
     sign_tx_by_input_group(tx, 0, len, config)
 }
 
-//ddd 5.can't achieve -- line229
+//ddd 5.can't achieve now -- line229
 pub fn sign_tx_by_input_group(
     tx: TransactionView,
     begin_index: usize,
@@ -280,18 +278,18 @@ pub fn gen_tx_with_grouped_args(
         OutPoint::new(contract_tx_hash.clone(), 0)
     };
     // dep contract code
-    // ddd 6. change to secp256r1
-    let blst_cell = CellOutput::new_builder()
+    // ddd 6. change to secp256r1: done
+    let secp256r1_cell = CellOutput::new_builder()
         .capacity(
-            Capacity::bytes(BLST_LOCK.len())
+            Capacity::bytes(SECP2561R1_LOCK.len())
                 .expect("script capacity")
                 .pack(),
         )
         .build();
-    let sighash_all_cell_data_hash = CellOutput::calc_data_hash(&BLST_LOCK);
+    let sighash_all_cell_data_hash = CellOutput::calc_data_hash(&SECP2561R1_LOCK);
     dummy.cells.insert(
         sighash_all_out_point.clone(),
-        (blst_cell, BLST_LOCK.clone()),
+        (secp256r1_cell, SECP2561R1_LOCK.clone()),
     );
     // setup default tx builder
     let dummy_capacity = Capacity::shannons(42);
@@ -393,10 +391,10 @@ pub fn debug_printer(script: &Byte32, msg: &str) {
     println!("{:?}: {}", str, msg);
 }
 
-//ddd 7. change identity flags
+//ddd 7. change identity flags :done
 pub const IDENTITY_FLAGS_PUBKEY_HASH: u8 = 0;
 pub const IDENTITY_FLAGS_OWNER_LOCK: u8 = 1;
-pub const IDENTITY_FLAGS_BLS12_381: u8 = 15;
+pub const IDENTITY_FLAGS_SECP256R1: u8 = 15;
 
 pub struct Identity {
     pub flags: u8,
@@ -410,12 +408,12 @@ impl Identity {
         (&mut ret[1..21]).copy_from_slice(self.blake160.as_ref());
         ret
     }
-    //ddd 8. replace blst_test
-    pub fn to_identity(&self) -> blst_test::rc_lock::Identity {
+    //ddd 8. replace blst_test :done
+    pub fn to_identity(&self) -> secp256r1_test::rc_lock::Identity {
         let mut ret: [u8; 21] = Default::default();
         ret[0] = self.flags;
         (&mut ret[1..21]).copy_from_slice(self.blake160.as_ref());
-        blst_test::rc_lock::Identity::from_slice(&ret[..]).unwrap()
+        secp256r1_test::rc_lock::Identity::from_slice(&ret[..]).unwrap()
     }
 }
 
