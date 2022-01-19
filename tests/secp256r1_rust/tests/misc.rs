@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+//ddd 1. useless lib
 use blst::min_pk::*;
 use blst::*;
 use ckb_traits::{CellDataProvider, HeaderProvider};
@@ -20,6 +21,7 @@ use lazy_static::lazy_static;
 use rand::prelude::*;
 use rand::Rng;
 
+//ddd 2. need write one
 use blst_test::rc_lock::RcLockWitnessLock;
 
 pub const BLAKE2B_KEY: &[u8] = &[];
@@ -27,6 +29,8 @@ pub const BLAKE2B_LEN: usize = 32;
 pub const PERSONALIZATION: &[u8] = b"ckb-default-hash";
 
 pub const MAX_CYCLES: u64 = std::u64::MAX;
+
+//ddd 3. get secp256r1 signature size
 pub const SIGNATURE_SIZE: usize = 144;
 
 // errors
@@ -44,6 +48,7 @@ pub const ERROR_NO_WHITE_LIST: i8 = 83;
 pub const ERROR_ON_BLACK_LIST: i8 = 57;
 pub const ERROR_RCE_EMERGENCY_HALT: i8 = 54;
 
+//ddd 4. change to ec_secp256r1_core
 lazy_static! {
     pub static ref BLST_LOCK: Bytes =
         Bytes::from(&include_bytes!("../../../build/bls12_381_sighash_all")[..]);
@@ -183,6 +188,7 @@ pub fn sign_tx(
     sign_tx_by_input_group(tx, 0, len, config)
 }
 
+//ddd 5.can't achieve -- line229
 pub fn sign_tx_by_input_group(
     tx: TransactionView,
     begin_index: usize,
@@ -274,6 +280,7 @@ pub fn gen_tx_with_grouped_args(
         OutPoint::new(contract_tx_hash.clone(), 0)
     };
     // dep contract code
+    // ddd 6. change to secp256r1
     let blst_cell = CellOutput::new_builder()
         .capacity(
             Capacity::bytes(BLST_LOCK.len())
@@ -386,6 +393,7 @@ pub fn debug_printer(script: &Byte32, msg: &str) {
     println!("{:?}: {}", str, msg);
 }
 
+//ddd 7. change identity flags
 pub const IDENTITY_FLAGS_PUBKEY_HASH: u8 = 0;
 pub const IDENTITY_FLAGS_OWNER_LOCK: u8 = 1;
 pub const IDENTITY_FLAGS_BLS12_381: u8 = 15;
@@ -402,6 +410,7 @@ impl Identity {
         (&mut ret[1..21]).copy_from_slice(self.blake160.as_ref());
         ret
     }
+    //ddd 8. replace blst_test
     pub fn to_identity(&self) -> blst_test::rc_lock::Identity {
         let mut ret: [u8; 21] = Default::default();
         ret[0] = self.flags;
@@ -410,6 +419,7 @@ impl Identity {
     }
 }
 
+//ddd 9. below???
 pub struct TestConfig {
     pub id: Identity,
     pub use_rc: bool,
