@@ -1,14 +1,16 @@
 TARGET := riscv64-unknown-linux-gnu
 CC := $(TARGET)-gcc
 LD := $(TARGET)-gcc
+AR := $(TARGET)-ar
+
 OBJCOPY := $(TARGET)-objcopy
 CFLAGS := -fPIC -O3 -nostdinc -nostdlib -nostartfiles -fvisibility=hidden -I deps/ckb-c-stdlib -I deps/ckb-c-stdlib/libc -I deps -I deps/ckb-c-stdlib/molecule -I c -I build -I deps/secp256k1/src -I deps/secp256k1 -Wall -Werror -Wno-nonnull -Wno-nonnull-compare -Wno-unused-function -g
 LDFLAGS := -Wl,-static -fdata-sections -ffunction-sections -Wl,--gc-sections
 SECP256K1_SRC := deps/secp256k1/src/ecmult_static_pre_context.h
 
-CFLAGS_MBEDTLS := -fPIC -Os -fno-builtin-printf -nostdinc -nostdlib -nostartfiles -fvisibility=hidden -fdata-sections -ffunction-sections -I deps/ckb-c-stdlib -I deps/ckb-c-stdlib/molecule -I deps/ckb-c-stdlib/libc -I deps/mbedtls/include -Wall -Werror -Wno-nonnull -Wno-nonnull-compare -Wno-unused-function -g
+CFLAGS_MBEDTLS := -fPIC -O3 -fno-builtin-printf -nostdinc -nostdlib -nostartfiles -fvisibility=hidden -fdata-sections -ffunction-sections -I deps/ckb-c-stdlib -I deps/ckb-c-stdlib/molecule -I deps/ckb-c-stdlib/libc -I deps/mbedtls/include -Wall -Werror -Wno-nonnull -Wno-nonnull-compare -Wno-unused-function -g
 LDFLAGS_MBEDTLS := -Wl,-static -Wl,--gc-sections
-PASSED_MBEDTLS_CFLAGS := -Os -fPIC -nostdinc -nostdlib -DCKB_DECLARATION_ONLY -I ../../ckb-c-stdlib/libc -fdata-sections -ffunction-sections
+PASSED_MBEDTLS_CFLAGS := -O3 -fPIC -nostdinc -nostdlib -DCKB_DECLARATION_ONLY -I ../../ckb-c-stdlib/libc -fdata-sections -ffunction-sections
 
 CFLAGS_BLST := -fno-builtin-printf -Ideps/blst/bindings $(subst ckb-c-stdlib,ckb-c-stdlib-202106,$(CFLAGS))
 CKB_VM_CLI := ckb-vm-b-cli
@@ -21,8 +23,13 @@ BUILDER_DOCKER := nervos/ckb-riscv-gnu-toolchain@sha256:aae8a3f79705f67d505d1f1d
 
 all: build/htlc build/secp256k1_blake2b_sighash_all_lib.so build/or build/simple_udt build/secp256k1_blake2b_sighash_all_dual build/and build/open_transaction build/rsa_sighash_all blst-demo
 
+static: build/librsa_secp256k1.a
+
 all-via-docker:
 	docker run --rm -v `pwd`:/code ${BUILDER_DOCKER} bash -c "cd /code && make"
+
+static-via-docker:
+	docker run --rm -v `pwd`:/code ${BUILDER_DOCKER} bash -c "cd /code && make static"
 
 build/htlc: c/htlc.c build/secp256k1_blake2b_sighash_all_lib.h
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $<
@@ -36,6 +43,7 @@ build/secp256k1_blake2b_sighash_all_dual: c/secp256k1_blake2b_sighash_all_dual.c
 	$(CC) $(CFLAGS) $(LDFLAGS) -fPIC -fPIE -pie -Wl,--dynamic-list c/dual.syms -o $@ $<
 	$(OBJCOPY) --only-keep-debug $@ $@.debug
 	$(OBJCOPY) --strip-debug --strip-all $@
+
 
 build/secp256k1_blake2b_sighash_all_lib.so: c/secp256k1_blake2b_sighash_all_lib.c build/secp256k1_data_info.h
 	$(CC) $(CFLAGS) $(LDFLAGS) -shared -o $@ $<
@@ -85,6 +93,25 @@ build/rsa_sighash_all: c/rsa_sighash_all.c deps/mbedtls/library/libmbedcrypto.a
 	$(CC) $(CFLAGS_MBEDTLS) $(LDFLAGS_MBEDTLS) -D__SHARED_LIBRARY__ -fPIC -fPIE -pie -Wl,--dynamic-list c/rsa.syms -o $@ $^
 	$(OBJCOPY) --only-keep-debug $@ $@.debug
 	$(OBJCOPY) --strip-debug --strip-all $@
+
+### static library
+build/librsa_secp256k1.o: c/librsa_secp256k1.c
+	$(CC) $(CFLAGS_MBEDTLS) -c -I include -DCKB_DECLARATION_ONLY -D__SHARED_LIBRARY__ -o $@ $<
+
+build/rsa_sighash_all_static.o: c/rsa_sighash_all_static.c
+	$(CC) $(CFLAGS_MBEDTLS) -c -I include -DCKB_DECLARATION_ONLY -D__SHARED_LIBRARY__ -o $@ $<
+
+build/secp256k1_blake2b_sighash_all_static.o:  c/secp256k1_blake2b_sighash_all_static.c build/secp256k1_data_info.h
+	cp c/ecmult_static_context.h deps/secp256k1/src
+	cp c/ecmult_static_pre_context.h deps/secp256k1/src
+	$(CC) $(CFLAGS) -c -I include -DCKB_DECLARATION_ONLY -D__SHARED_LIBRARY__ -o $@ $<
+
+build/librsa_secp256k1.a: build/librsa_secp256k1.o build/rsa_sighash_all_static.o build/secp256k1_blake2b_sighash_all_static.o deps/mbedtls/library/libmbedcrypto.a
+	cp deps/mbedtls/library/libmbedcrypto.a build/librsa_secp256k1.a
+	$(AR) r build/librsa_secp256k1.a build/librsa_secp256k1.o build/rsa_sighash_all_static.o build/secp256k1_blake2b_sighash_all_static.o
+
+static-clean:
+	rm -f build/librsa_secp256k1.o build/rsa_sighash_all_static.o build/secp256k1_blake2b_sighash_all_static.o build/librsa_secp256k1.a
 
 simulator/build/rsa_sighash_all_test: simulator/rsa_sighash_all_usesim.c deps/mbedtls/library/libmbedcrypto.a
 	riscv64-unknown-elf-gcc -DRSA_RUN_TEST $(CFLAGS_MBEDTLS) ${LDFLAGS_MBEDTLS} -o $@ $^
@@ -150,7 +177,7 @@ fmt:
 	clang-format -i -style=Google $(wildcard c/*.h c/*.c)
 	git diff --exit-code $(wildcard c/*.h c/*.c)
 
-clean:
+clean: static-clean
 	rm -rf build/htlc build/dump_secp256k1_data build/secp256k1_data build/secp256k1_data_info.h
 	rm -rf build/generate_data_hash build/secp256k1_blake2b_sighash_all_lib.h
 	rm -rf build/secp256k1_blake2b_sighash_all_lib.so
@@ -161,6 +188,7 @@ clean:
 	make -C deps/mbedtls/library clean
 	rm -f build/rsa_sighash_all
 	rm -f build/blst* build/server.o build/server-asm.o
+	rm -f build/bls12_381_sighash_all
 
 dist: clean all
 
