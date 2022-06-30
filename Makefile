@@ -19,7 +19,7 @@ MOLC_VERSION := 0.7.0
 # docker pull nervos/ckb-riscv-gnu-toolchain:gnu-bionic-20191012
 BUILDER_DOCKER := nervos/ckb-riscv-gnu-toolchain@sha256:aae8a3f79705f67d505d1f1d5ddc694a4fd537ed1c7e9622420a470d59ba2ec3
 
-all: build/htlc build/secp256k1_blake2b_sighash_all_lib.so build/or build/simple_udt build/secp256k1_blake2b_sighash_all_dual build/and build/open_transaction build/rsa_sighash_all blst-demo
+all: build/htlc build/secp256k1_blake2b_sighash_all_lib.so build/or build/simple_udt build/secp256k1_blake2b_sighash_all_dual build/and build/open_transaction build/rsa_sighash_all blst-demo deps/libecc
 
 all-via-docker:
 	docker run --rm -v `pwd`:/code ${BUILDER_DOCKER} bash -c "cd /code && make"
@@ -70,6 +70,11 @@ build/simple_udt: c/simple_udt.c
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $<
 	$(OBJCOPY) --only-keep-debug $@ $@.debug
 	$(OBJCOPY) --strip-debug --strip-all $@
+
+deps/libecc: deps/libecc/build/libarith.a deps/libecc/build/libec.a deps/libecc/build/libsign.a
+
+deps/libecc/build/libarith.a deps/libecc/build/libec.a deps/libecc/build/libsign.a:
+	make -C deps/libecc CC=${CC} LD=${LD} 64
 
 deps/mbedtls/library/libmbedcrypto.a:
 	cp deps/mbedtls-config-template.h deps/mbedtls/include/mbedtls/config.h
