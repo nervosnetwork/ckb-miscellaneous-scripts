@@ -1,10 +1,10 @@
 mod secp256r1_blake160_sighash_all;
 
 use ckb_crypto::secp::Privkey;
-use ckb_script::DataLoader;
+use ckb_traits::{CellDataProvider, HeaderProvider};
 use ckb_types::{
     bytes::Bytes,
-    core::{cell::CellMeta, BlockExt, EpochExt, HeaderView, TransactionView},
+    core::{EpochExt, HeaderView, TransactionView},
     packed::{self, Byte32, CellOutput, OutPoint, WitnessArgs},
     prelude::*,
     H256,
@@ -36,33 +36,28 @@ impl DummyDataLoader {
     }
 }
 
-impl DataLoader for DummyDataLoader {
-    // load Cell Data
-    fn load_cell_data(&self, cell: &CellMeta) -> Option<(Bytes, Byte32)> {
-        cell.mem_cell_data.clone().or_else(|| {
-            self.cells
-                .get(&cell.out_point)
-                .map(|(_, data)| (data.clone(), CellOutput::calc_data_hash(&data)))
-        })
-    }
-    // load BlockExt
-    fn get_block_ext(&self, _hash: &Byte32) -> Option<BlockExt> {
-        unreachable!()
+impl CellDataProvider for DummyDataLoader {
+    fn get_cell_data(&self, out_point: &OutPoint) -> Option<ckb_types::bytes::Bytes> {
+        self.cells.get(out_point).map(|(_, data)| data.clone())
     }
 
+    fn get_cell_data_hash(&self, out_point: &OutPoint) -> Option<Byte32> {
+        self.cells
+            .get(out_point)
+            .map(|(_, data)| CellOutput::calc_data_hash(&data))
+    }
+}
+
+impl HeaderProvider for DummyDataLoader {
     // load header
     fn get_header(&self, block_hash: &Byte32) -> Option<HeaderView> {
         self.headers.get(block_hash).cloned()
     }
-
-    // load EpochExt
-    fn get_block_epoch(&self, block_hash: &Byte32) -> Option<EpochExt> {
-        self.epoches.get(block_hash).cloned()
-    }
 }
 
 pub fn blake160(message: &[u8]) -> Bytes {
-    Bytes::from(&ckb_hash::blake2b_256(message)[..20])
+    let hash: [u8; 32] = ckb_hash::blake2b_256(message);
+    Bytes::copy_from_slice(&hash[0..20])
 }
 
 pub fn sign_tx(tx: TransactionView, key: &Privkey) -> TransactionView {
@@ -93,8 +88,11 @@ pub fn sign_tx_by_input_group(
                     buf.resize(SIGNATURE_SIZE, 0);
                     buf.into()
                 };
-                let witness_for_digest =
-                    witness.clone().as_builder().lock(zero_lock.pack()).build();
+                let witness_for_digest = witness
+                    .clone()
+                    .as_builder()
+                    .lock(Some(zero_lock).pack())
+                    .build();
                 let witness_len = witness_for_digest.as_bytes().len() as u64;
                 blake2b.update(&witness_len.to_le_bytes());
                 blake2b.update(&witness_for_digest.as_bytes());
@@ -107,9 +105,10 @@ pub fn sign_tx_by_input_group(
                 blake2b.finalize(&mut message);
                 let message = H256::from(message);
                 let sig = key.sign_recoverable(&message).expect("sign");
+                let bytes: Bytes = sig.serialize().into();
                 witness
                     .as_builder()
-                    .lock(sig.serialize().pack())
+                    .lock(Some(bytes).pack())
                     .build()
                     .as_bytes()
                     .pack()
