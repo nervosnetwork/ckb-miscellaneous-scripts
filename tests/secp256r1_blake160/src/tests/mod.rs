@@ -16,8 +16,9 @@ pub const MAX_CYCLES: u64 = std::u64::MAX;
 pub const SIGNATURE_SIZE: usize = 65;
 
 lazy_static! {
-    pub static ref SIGHASH_ALL_BIN: Bytes =
-        Bytes::from(&include_bytes!("../../../../build/secp256r1_blake160_sighash_all")[..]);
+    pub static ref SIGHASH_ALL_BIN: Bytes = Bytes::from(
+        &include_bytes!("../../../../build/secp256k1_blake160_sighash_all_system_scripts")[..]
+    );
     pub static ref SECP256K1_DATA_BIN: Bytes =
         Bytes::from(&include_bytes!("../../../../build/secp256k1_data")[..]);
 }
