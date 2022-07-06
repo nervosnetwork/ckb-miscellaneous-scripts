@@ -17,4 +17,5 @@
 	branch = add-identity
 [submodule "deps/libecc"]
 	path = deps/libecc
-	url = https://github.com/ANSSI-FR/libecc.git
+	url = https://github.com/contrun/libecc.git
+	branch = blank_external_dependencies

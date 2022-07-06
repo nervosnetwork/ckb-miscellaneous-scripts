@@ -56,6 +56,22 @@ build/secp256r1_blake160_sighash_all: c/secp256r1_blake160_sighash_all.c ${PROTO
 	$(OBJCOPY) --only-keep-debug $@ $@.debug
 	$(OBJCOPY) --strip-debug --strip-all $@
 
+# TODO: The target build/secp256r1_blake160_test fails, while target build/secp256r1_blake160_test_building_works builds successfully.
+# riscv64-unknown-linux-gnu-gcc -fPIC -O3 -nostdinc -nostdlib -nostartfiles -fvisibility=hidden -I deps/ckb-c-stdlib -I deps/ckb-c-stdlib/libc -I deps -I deps/ckb-c-stdlib/molecule -I c -I build -I deps/secp256k1/src -I deps/secp256k1 -Wall -Werror -Wno-nonnull -Wno-nonnull-compare -Wno-unused-function -g -DWORDSIZE=64 -I deps/libecc/src -I deps/libecc/src/external_deps -Wl,-static -fdata-sections -ffunction-sections -Wl,--gc-sections -o build/secp256r1_blake160_test c/secp256r1_blake160_test.c
+# /riscv/lib/gcc/riscv64-unknown-linux-gnu/9.2.0/../../../../riscv64-unknown-linux-gnu/bin/ld: warning: cannot find entry symbol _start; not setting start address
+# riscv64-unknown-linux-gnu-objcopy --only-keep-debug build/secp256r1_blake160_test build/secp256r1_blake160_test.debug
+# riscv64-unknown-linux-gnu-objcopy: error: the input file 'build/secp256r1_blake160_test' has no sections
+# Makefile:60: recipe for target 'build/secp256r1_blake160_test' failed
+build/secp256r1_blake160_test: c/secp256r1_blake160_test.c deps/libecc/build/libarith.a deps/libecc/build/libec.a deps/libecc/build/libsign.a
+	$(CC) $(CFLAGS) -DWORDSIZE=64 -DWITH_BLANK_EXTERNAL_DEPENDENCIES -I deps/libecc/src -I deps/libecc/src/external_deps $(LDFLAGS) -o $@ $^
+	$(OBJCOPY) --only-keep-debug $@ $@.debug
+	$(OBJCOPY) --strip-debug --strip-all $@
+
+build/secp256r1_blake160_test_building_works: c/secp256r1_blake160_test.c deps/libecc/build/libarith.a deps/libecc/build/libec.a deps/libecc/build/libsign.a
+	$(CC) -fPIC -O3 -fvisibility=hidden -Wall -Werror -Wno-nonnull -Wno-nonnull-compare -Wno-unused-function -g -DWORDSIZE=64 -DWITH_BLANK_EXTERNAL_DEPENDENCIES -I deps/libecc/src -I deps/libecc/src/external_deps -fdata-sections -ffunction-sections -Wl,--gc-sections -o $@ $^
+	$(OBJCOPY) --only-keep-debug $@ $@.debug
+	$(OBJCOPY) --strip-debug --strip-all $@
+
 build/secp256k1_blake2b_sighash_all_dual: c/secp256k1_blake2b_sighash_all_dual.c build/secp256k1_data_info.h
 	$(CC) $(CFLAGS) $(LDFLAGS) -fPIC -fPIE -pie -Wl,--dynamic-list c/dual.syms -o $@ $<
 	$(OBJCOPY) --only-keep-debug $@ $@.debug
@@ -98,7 +114,7 @@ build/simple_udt: c/simple_udt.c
 deps/libecc: deps/libecc/build/libarith.a deps/libecc/build/libec.a deps/libecc/build/libsign.a
 
 deps/libecc/build/libarith.a deps/libecc/build/libec.a deps/libecc/build/libsign.a:
-	make -C deps/libecc CC=${CC} LD=${LD} 64
+	make -C deps/libecc CC=${CC} LD=${LD} CFLAGS="-DWORDSIZE=64 -DWITH_BLANK_EXTERNAL_DEPENDENCIES -fPIC"
 
 deps/mbedtls/library/libmbedcrypto.a:
 	cp deps/mbedtls-config-template.h deps/mbedtls/include/mbedtls/config.h
@@ -186,6 +202,7 @@ clean:
 	rm -rf build/*.debug
 	rm -rf build/or
 	rm -rf build/simple_udt build/secp256k1_blake2b_sighash_all_dual build/and
+	rm -rf build/secp256r1_blake160_test* build/secp256r1_blake160_sighash_all
 	make -C deps/secp256k1 clean || true
 	make -C deps/mbedtls/library clean
 	make -C deps/libecc clean
