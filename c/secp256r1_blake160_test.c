@@ -1,3 +1,7 @@
+// Note this must be included, otherwise linker would fail
+// /riscv/lib/gcc/riscv64-unknown-linux-gnu/9.2.0/../../../../riscv64-unknown-linux-gnu/bin/ld: warning: cannot find entry symbol _start; not setting start address
+#include <stdlib.h>
+
 #include "libec.h"
 #include "libsig.h"
 

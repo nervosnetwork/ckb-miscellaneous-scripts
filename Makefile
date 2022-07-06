@@ -14,6 +14,9 @@ PASSED_MBEDTLS_CFLAGS := -Os -fPIC -nostdinc -nostdlib -DCKB_DECLARATION_ONLY -I
 CFLAGS_BLST := -fno-builtin-printf -Ideps/blst/bindings $(subst ckb-c-stdlib,ckb-c-stdlib-202106,$(CFLAGS))
 CKB_VM_CLI := ckb-vm-b-cli
 
+CFLAGS_LIBECC := -DWORDSIZE=64 -DWITH_STDLIB -DWITH_BLANK_EXTERNAL_DEPENDENCIES -fPIC
+CFLAGS_LINK_TO_LIBECC := -DWORDSIZE=64 -DWITH_STDLIB -DWITH_BLANK_EXTERNAL_DEPENDENCIES -I deps/libecc/src -I deps/libecc/src/external_deps
+
 MOLC := moleculec
 MOLC_VERSION := 0.7.0
 
@@ -52,23 +55,12 @@ build/secp256k1_blake2b_sighash_all_lib.h: build/generate_data_hash build/secp25
 	$< build/secp256k1_blake2b_sighash_all_lib.so secp256k1_blake2b_sighash_all_data_hash > $@
 
 build/secp256r1_blake160_sighash_all: c/secp256r1_blake160_sighash_all.c ${PROTOCOL_HEADER} c/common.h c/utils.h build/secp256k1_data_info.h
-	$(CC) $(CFLAGS) -I deps/libecc $(LDFLAGS) -o $@ $<
+	$(CC) $(CFLAGS) $(CFLAGS_LINK_TO_LIBECC) $(LDFLAGS) -o $@ $<
 	$(OBJCOPY) --only-keep-debug $@ $@.debug
 	$(OBJCOPY) --strip-debug --strip-all $@
 
-# TODO: The target build/secp256r1_blake160_test fails, while target build/secp256r1_blake160_test_building_works builds successfully.
-# riscv64-unknown-linux-gnu-gcc -fPIC -O3 -nostdinc -nostdlib -nostartfiles -fvisibility=hidden -I deps/ckb-c-stdlib -I deps/ckb-c-stdlib/libc -I deps -I deps/ckb-c-stdlib/molecule -I c -I build -I deps/secp256k1/src -I deps/secp256k1 -Wall -Werror -Wno-nonnull -Wno-nonnull-compare -Wno-unused-function -g -DWORDSIZE=64 -I deps/libecc/src -I deps/libecc/src/external_deps -Wl,-static -fdata-sections -ffunction-sections -Wl,--gc-sections -o build/secp256r1_blake160_test c/secp256r1_blake160_test.c
-# /riscv/lib/gcc/riscv64-unknown-linux-gnu/9.2.0/../../../../riscv64-unknown-linux-gnu/bin/ld: warning: cannot find entry symbol _start; not setting start address
-# riscv64-unknown-linux-gnu-objcopy --only-keep-debug build/secp256r1_blake160_test build/secp256r1_blake160_test.debug
-# riscv64-unknown-linux-gnu-objcopy: error: the input file 'build/secp256r1_blake160_test' has no sections
-# Makefile:60: recipe for target 'build/secp256r1_blake160_test' failed
 build/secp256r1_blake160_test: c/secp256r1_blake160_test.c deps/libecc/build/libarith.a deps/libecc/build/libec.a deps/libecc/build/libsign.a
-	$(CC) $(CFLAGS) -DWORDSIZE=64 -DWITH_BLANK_EXTERNAL_DEPENDENCIES -I deps/libecc/src -I deps/libecc/src/external_deps $(LDFLAGS) -o $@ $^
-	$(OBJCOPY) --only-keep-debug $@ $@.debug
-	$(OBJCOPY) --strip-debug --strip-all $@
-
-build/secp256r1_blake160_test_building_works: c/secp256r1_blake160_test.c deps/libecc/build/libarith.a deps/libecc/build/libec.a deps/libecc/build/libsign.a
-	$(CC) -fPIC -O3 -fvisibility=hidden -Wall -Werror -Wno-nonnull -Wno-nonnull-compare -Wno-unused-function -g -DWORDSIZE=64 -DWITH_BLANK_EXTERNAL_DEPENDENCIES -I deps/libecc/src -I deps/libecc/src/external_deps -fdata-sections -ffunction-sections -Wl,--gc-sections -o $@ $^
+	$(CC) $(CFLAGS) $(CFLAGS_LINK_TO_LIBECC) $(LDFLAGS) -o $@ $^
 	$(OBJCOPY) --only-keep-debug $@ $@.debug
 	$(OBJCOPY) --strip-debug --strip-all $@
 
@@ -114,7 +106,7 @@ build/simple_udt: c/simple_udt.c
 deps/libecc: deps/libecc/build/libarith.a deps/libecc/build/libec.a deps/libecc/build/libsign.a
 
 deps/libecc/build/libarith.a deps/libecc/build/libec.a deps/libecc/build/libsign.a:
-	make -C deps/libecc CC=${CC} LD=${LD} CFLAGS="-DWORDSIZE=64 -DWITH_BLANK_EXTERNAL_DEPENDENCIES -fPIC"
+	make -C deps/libecc CC=${CC} LD=${LD} CFLAGS="$(CFLAGS_LIBECC)"
 
 deps/mbedtls/library/libmbedcrypto.a:
 	cp deps/mbedtls-config-template.h deps/mbedtls/include/mbedtls/config.h
