@@ -1,13 +1,18 @@
 mod secp256r1_blake160_sighash_all;
 
-use ckb_crypto::secp::Privkey;
+use p256::ecdsa::{
+    signature::{Signature, Signer},
+    SigningKey,
+};
+
+use bytes::{BufMut, BytesMut};
+
 use ckb_traits::{CellDataProvider, HeaderProvider};
 use ckb_types::{
     bytes::Bytes,
     core::{EpochExt, HeaderView, TransactionView},
     packed::{self, Byte32, CellOutput, OutPoint, WitnessArgs},
     prelude::*,
-    H256,
 };
 use lazy_static::lazy_static;
 use std::collections::HashMap;
@@ -60,14 +65,14 @@ pub fn blake160(message: &[u8]) -> Bytes {
     Bytes::copy_from_slice(&hash[0..20])
 }
 
-pub fn sign_tx(tx: TransactionView, key: &Privkey) -> TransactionView {
+pub fn sign_tx(tx: TransactionView, key: &SigningKey) -> TransactionView {
     let witnesses_len = tx.witnesses().len();
     sign_tx_by_input_group(tx, key, 0, witnesses_len)
 }
 
 pub fn sign_tx_by_input_group(
     tx: TransactionView,
-    key: &Privkey,
+    key: &SigningKey,
     begin_index: usize,
     len: usize,
 ) -> TransactionView {
@@ -103,12 +108,19 @@ pub fn sign_tx_by_input_group(
                     blake2b.update(&witness.raw_data());
                 });
                 blake2b.finalize(&mut message);
-                let message = H256::from(message);
-                let sig = key.sign_recoverable(&message).expect("sign");
-                let bytes: Bytes = sig.serialize().into();
+                let sig = key.sign(&message);
+                let sig_bytes = sig.as_bytes();
+
+                let verifying_key = key.verifying_key().to_encoded_point(false);
+                let verifying_key_bytes = verifying_key.as_bytes();
+
+                let mut buf = BytesMut::with_capacity(verifying_key_bytes.len() + sig_bytes.len());
+                buf.put(verifying_key_bytes);
+                buf.put(sig_bytes);
+
                 witness
                     .as_builder()
-                    .lock(Some(bytes).pack())
+                    .lock(Some(buf.freeze()).pack())
                     .build()
                     .as_bytes()
                     .pack()
