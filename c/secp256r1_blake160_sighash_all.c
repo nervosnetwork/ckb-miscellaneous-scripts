@@ -51,7 +51,8 @@
 #include "ckb_syscalls.h"
 #include "common.h"
 #include "protocol.h"
-#include "secp256k1_helper.h"
+
+#include "secp256r1_helper.h"
 
 // Common definitions here, one important limitation, is that this lock script
 // only works with scripts and witnesses that are no larger than 32KB. We
@@ -113,12 +114,18 @@ int main() {
 
   mol_seg_t args_seg = MolReader_Script_get_args(&script_seg);
   mol_seg_t args_bytes_seg = MolReader_Bytes_raw_bytes(&args_seg);
-  if (args_bytes_seg.size != BLAKE160_SIZE) {
-    return ERROR_ARGUMENTS_LEN;
+  secp256r1_context_t context;
+  if (secp256r1_context_init(&context)) {
+    return ERROR_SYSCALL;
+  }
+  ec_pub_key pub_key;
+  if (secp256r1_pub_key_import_from_buf(context, &pub_key, args_bytes_seg.ptr,
+                                        args_bytes_seg.size)) {
+    return ERROR_ENCODING;
   }
 
-  // Load the first witness, or the witness of the same index as the first input
-  // using current script.
+  // Load the first witness, or the witness of the same index as the first
+  // input using current script.
   uint64_t witness_len = MAX_WITNESS_SIZE;
   ret = ckb_load_witness(temp, &witness_len, 0, 0, CKB_SOURCE_GROUP_INPUT);
   if (ret != CKB_SUCCESS) {
@@ -237,42 +244,11 @@ int main() {
   // advantage of CKB: you can ship cryptographic algorithm within your smart
   // contract, you don't have to wait for the foundation to ship a new
   // cryptographic algorithm. You can just build and ship your own.
-  secp256k1_context context;
-  uint8_t secp_data[CKB_SECP256K1_DATA_SIZE];
-  ret = ckb_secp256k1_custom_verify_only_initialize(&context, secp_data);
-  if (ret != 0) {
-    return ret;
-  }
 
-  secp256k1_ecdsa_recoverable_signature signature;
-  if (secp256k1_ecdsa_recoverable_signature_parse_compact(
-          &context, &signature, lock_bytes, lock_bytes[RECID_INDEX]) == 0) {
+  if (secp256r1_verify_signature(context, lock_bytes, SIGNATURE_SIZE, &pub_key,
+                                 message, BLAKE160_SIZE)) {
     return ERROR_SECP_PARSE_SIGNATURE;
-  }
-
-  // From the recoverable signature, we can derive the public key used.
-  secp256k1_pubkey pubkey;
-  if (secp256k1_ecdsa_recover(&context, &pubkey, &signature, message) != 1) {
-    return ERROR_SECP_RECOVER_PUBKEY;
-  }
-
-  // Let's serialize the signature first, then generate the blake2b hash.
-  size_t pubkey_size = PUBKEY_SIZE;
-  if (secp256k1_ec_pubkey_serialize(&context, temp, &pubkey_size, &pubkey,
-                                    SECP256K1_EC_COMPRESSED) != 1) {
-    return ERROR_SECP_SERIALIZE_PUBKEY;
-  }
-
-  blake2b_init(&blake2b_ctx, BLAKE2B_BLOCK_SIZE);
-  blake2b_update(&blake2b_ctx, temp, pubkey_size);
-  blake2b_final(&blake2b_ctx, temp, BLAKE2B_BLOCK_SIZE);
-
-  // As mentioned above, we are only using the first 160 bits(20 bytes), if they
-  // match the value provided as the first 20 bytes of script args, the
-  // signature verification is considered to be successful.
-  if (memcmp(args_bytes_seg.ptr, temp, BLAKE160_SIZE) != 0) {
-    return ERROR_PUBKEY_BLAKE160_HASH;
-  }
+  };
 
   return 0;
 }
