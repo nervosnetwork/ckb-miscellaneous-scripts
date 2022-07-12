@@ -47,6 +47,11 @@
 // those headers included. If you are building a new script, we do recommend you
 // to take a look at what's in the new repository, and use the code there
 // directly.
+
+#define CKB_C_STDLIB_PRINTF
+
+#include <stdio.h>
+
 #include "blake2b.h"
 #include "ckb_syscalls.h"
 #include "common.h"
@@ -62,13 +67,14 @@
 // the end of the 64-byte compact recoverable signature.
 #define BLAKE2B_BLOCK_SIZE 32
 #define BLAKE160_SIZE 20
-#define PUBKEY_SIZE 33
+#define PUBKEY_SIZE 64
 #define TEMP_SIZE 32768
 #define RECID_INDEX 64
 /* 32 KB */
 #define MAX_WITNESS_SIZE 32768
 #define SCRIPT_SIZE 32768
-#define SIGNATURE_SIZE 65
+#define SIGNATURE_SIZE 64
+#define LOCK_SIZE (PUBKEY_SIZE + SIGNATURE_SIZE)
 
 // Compile-time guard against buffer abuse
 #if (MAX_WITNESS_SIZE > TEMP_SIZE) || (SCRIPT_SIZE > TEMP_SIZE)
@@ -87,11 +93,12 @@
 // [WitnessArgs](https://github.com/nervosnetwork/ckb/blob/1df5f2c1cbf07e04622fb8faa5b152c1af7ae341/util/types/schemas/blockchain.mol#L106)
 // object in molecule serialization format. The lock field of said WitnessArgs
 // object should contain a 65-byte recoverable signature to prove ownership.
+
 int main() {
   int ret;
   uint64_t len = 0;
   unsigned char temp[TEMP_SIZE];
-  unsigned char lock_bytes[SIGNATURE_SIZE];
+  unsigned char lock_bytes[LOCK_SIZE];
 
   // First let's load and extract script args part, which is also the blake160
   // hash of public key from current running script.
@@ -119,8 +126,13 @@ int main() {
     return ERROR_SYSCALL;
   }
   ec_pub_key pub_key;
-  if (secp256r1_pub_key_import_from_buf(context, &pub_key, args_bytes_seg.ptr,
-                                        args_bytes_seg.size)) {
+  if (secp256r1_pub_key_import_from_aff_buf(
+          context, &pub_key, args_bytes_seg.ptr, args_bytes_seg.size)) {
+    printf("args_bytes_seg: ptr %p, size %d", args_bytes_seg.ptr,
+           args_bytes_seg.size);
+    buf_print("import public key failed", args_bytes_seg.ptr,
+              args_bytes_seg.size);
+    return -42;
     return ERROR_ENCODING;
   }
 
@@ -146,7 +158,7 @@ int main() {
 
   // The lock field must be 65 byte long to represent a (possibly) valid
   // signature.
-  if (lock_bytes_seg.size != SIGNATURE_SIZE) {
+  if (lock_bytes_seg.size != LOCK_SIZE) {
     return ERROR_ARGUMENTS_LEN;
   }
   // We keep the signature in the temporary location, since later we will modify
@@ -245,8 +257,9 @@ int main() {
   // contract, you don't have to wait for the foundation to ship a new
   // cryptographic algorithm. You can just build and ship your own.
 
-  if (secp256r1_verify_signature(context, lock_bytes, SIGNATURE_SIZE, &pub_key,
-                                 message, BLAKE160_SIZE)) {
+  if (secp256r1_verify_signature(context, lock_bytes + PUBKEY_SIZE,
+                                 SIGNATURE_SIZE, &pub_key, message,
+                                 BLAKE160_SIZE)) {
     return ERROR_SECP_PARSE_SIGNATURE;
   };
 

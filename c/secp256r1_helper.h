@@ -3,6 +3,9 @@
 // warning: cannot find entry symbol _start; not setting start address
 #include <stdlib.h>
 
+#include <stdarg.h>
+#include <stdio.h>
+
 #include "lib_ecc_types.h"
 #include "libec.h"
 #include "libsig.h"
@@ -14,8 +17,32 @@
 
 #include "rand.h"
 
+/* Print the buffer of a given size */
+void buf_print(const char *msg, const u8 *buf, u16 buflen)
+{
+	u32 i;
+
+	if ((buf == NULL) || (msg == NULL)) {
+		goto err;
+	}
+
+	printf("%s: ", msg);
+	for (i = 0; i < (u32)buflen; i++) {
+		printf("%02x", buf[i]);
+	}
+	printf("\n");
+
+err:
+	return;
+}
+
 /* TODO: Don't know why these are still needed */
-void ext_printf(const char *_format, ...) {}
+void ext_printf(const char *format, ...) {
+  // va_list arglist;
+  // va_start(arglist, format);
+  // vprintf(format, arglist);
+  // va_end(arglist);
+}
 
 int get_random(unsigned char *buf, u16 len) {
   for (int i = 0; i < len; i++) {
@@ -94,6 +121,14 @@ secp256r1_pub_key_import_from_buf(secp256r1_context_t context,
                                   u8 pub_key_buf_len) {
   return ec_pub_key_import_from_buf(pub_key, &context.ec_params, pub_key_buf,
                                     pub_key_buf_len, context.sig_algo);
+}
+
+ATTRIBUTE_WARN_UNUSED_RET int secp256r1_pub_key_import_from_aff_buf(
+    secp256r1_context_t context, ec_pub_key *pub_key, const u8 *pub_key_buf,
+    u8 pub_key_buf_len) {
+  return ec_pub_key_import_from_aff_buf(pub_key, &context.ec_params,
+                                        pub_key_buf, pub_key_buf_len,
+                                        context.sig_algo);
 }
 
 ATTRIBUTE_WARN_UNUSED_RET int

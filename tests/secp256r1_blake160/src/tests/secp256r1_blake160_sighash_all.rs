@@ -4,7 +4,7 @@ use super::{
 };
 use ckb_chain_spec::consensus::{Consensus, ConsensusBuilder};
 use ckb_crypto::secp::{Generator, Privkey};
-use p256::ecdsa::SigningKey;
+use p256::ecdsa::{SigningKey, VerifyingKey};
 
 use ckb_script::{TransactionScriptsVerifier, TxVerifyEnv};
 use ckb_types::core::hardfork::HardForkSwitch;
@@ -15,7 +15,9 @@ use ckb_types::{
         Capacity, DepType, EpochNumberWithFraction, HeaderView, ScriptHashType, TransactionBuilder,
         TransactionView,
     },
-    packed::{CellDep, CellInput, CellOutput, OutPoint, Script, WitnessArgs, WitnessArgsBuilder},
+    packed::{
+        Byte32, CellDep, CellInput, CellOutput, OutPoint, Script, WitnessArgs, WitnessArgsBuilder,
+    },
     prelude::*,
     H256,
 };
@@ -25,6 +27,19 @@ use rand::{thread_rng, Rng, SeedableRng};
 const ERROR_ENCODING: i8 = -2;
 const ERROR_WITNESS_SIZE: i8 = -22;
 const ERROR_PUBKEY_BLAKE160_HASH: i8 = -31;
+
+fn debug_printer(script: &Byte32, msg: &str) {
+    let slice = script.as_slice();
+    let str = format!(
+        "Script({:x}{:x}{:x}{:x}{:x})",
+        slice[0], slice[1], slice[2], slice[3], slice[4]
+    );
+    println!("{:?}: {}", str, msg);
+}
+
+fn get_pk_bytes(pubkey: &VerifyingKey) -> Bytes {
+    Bytes::copy_from_slice(&pubkey.to_encoded_point(false).as_bytes()[1..])
+}
 
 fn gen_tx(dummy: &mut DummyDataLoader, lock_args: Bytes) -> TransactionView {
     let mut rng = thread_rng();
@@ -101,6 +116,7 @@ fn gen_tx_with_grouped_args<R: Rng>(
         .output_data(Bytes::new().pack());
 
     for (args, inputs_size) in grouped_args {
+        dbg!(&args, inputs_size);
         // setup dummy input unlock script
         for _ in 0..inputs_size {
             let previous_tx_hash = {
@@ -205,7 +221,9 @@ fn build_resolved_tx(data_loader: &DummyDataLoader, tx: &TransactionView) -> Res
 
 fn get_random_signing_key() -> SigningKey {
     let x = &hex!("c9afa9d845ba75166b5c215767b1d6934e50c3db36e89b127b8a622b120f6721");
-    SigningKey::from_bytes(x).unwrap()
+    let sk = SigningKey::from_bytes(x).unwrap();
+    dbg!(&sk.verifying_key());
+    sk
 }
 
 #[test]
@@ -213,15 +231,15 @@ fn test_sighash_all_unlock() {
     let mut data_loader = DummyDataLoader::new();
     let privkey = get_random_signing_key();
     let pubkey = privkey.verifying_key();
-    let pubkey_hash = Bytes::copy_from_slice(pubkey.to_encoded_point(true).as_bytes());
-    let tx = gen_tx(&mut data_loader, pubkey_hash);
+    let tx = gen_tx(&mut data_loader, get_pk_bytes(&pubkey));
     let tx = sign_tx(tx, &privkey);
     let resolved_tx = build_resolved_tx(&data_loader, &tx);
     let consensus = gen_consensus();
     let tx_env = gen_tx_env();
-    let verify_result =
-        TransactionScriptsVerifier::new(&resolved_tx, &consensus, &data_loader, &tx_env)
-            .verify(MAX_CYCLES);
+    let mut verifier =
+        TransactionScriptsVerifier::new(&resolved_tx, &consensus, &data_loader, &tx_env);
+    verifier.set_debug_printer(debug_printer);
+    let verify_result = verifier.verify(MAX_CYCLES);
     verify_result.expect("pass verification");
 }
 

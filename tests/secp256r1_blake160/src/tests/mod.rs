@@ -21,9 +21,8 @@ pub const MAX_CYCLES: u64 = std::u64::MAX;
 pub const SIGNATURE_SIZE: usize = 65;
 
 lazy_static! {
-    pub static ref SIGHASH_ALL_BIN: Bytes = Bytes::from(
-        &include_bytes!("../../../../build/secp256k1_blake160_sighash_all_system_scripts")[..]
-    );
+    pub static ref SIGHASH_ALL_BIN: Bytes =
+        Bytes::from(&include_bytes!("../../../../build/secp256r1_blake160_sighash_all")[..]);
     pub static ref SECP256K1_DATA_BIN: Bytes =
         Bytes::from(&include_bytes!("../../../../build/secp256k1_data")[..]);
 }
@@ -112,15 +111,23 @@ pub fn sign_tx_by_input_group(
                 let sig_bytes = sig.as_bytes();
 
                 let verifying_key = key.verifying_key().to_encoded_point(false);
-                let verifying_key_bytes = verifying_key.as_bytes();
+                let verifying_key_bytes = &verifying_key.as_bytes()[1..];
 
                 let mut buf = BytesMut::with_capacity(verifying_key_bytes.len() + sig_bytes.len());
                 buf.put(verifying_key_bytes);
                 buf.put(sig_bytes);
+                let bytes = buf.freeze();
+                dbg!(&verifying_key_bytes, sig_bytes, &bytes);
+                println!(
+                    "verifying_key: len({}) {:02X?}",
+                    verifying_key_bytes.len(),
+                    verifying_key_bytes
+                );
+                println!("bytes: len({}) {:02X?}", bytes.len(), bytes);
 
                 witness
                     .as_builder()
-                    .lock(Some(buf.freeze()).pack())
+                    .lock(Some(bytes).pack())
                     .build()
                     .as_bytes()
                     .pack()

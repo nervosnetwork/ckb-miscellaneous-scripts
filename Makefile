@@ -55,12 +55,12 @@ build/secp256k1_blake2b_sighash_all_lib.h: build/generate_data_hash build/secp25
 	$< build/secp256k1_blake2b_sighash_all_lib.so secp256k1_blake2b_sighash_all_data_hash > $@
 
 build/secp256r1_blake160_sighash_all: c/secp256r1_blake160_sighash_all.c ${PROTOCOL_HEADER} c/common.h c/utils.h build/secp256k1_data_info.h deps/libecc/build/libarith.a deps/libecc/build/libec.a deps/libecc/build/libsign.a
-	$(CC) $(CFLAGS) $(CFLAGS_LINK_TO_LIBECC) $(LDFLAGS) -o $@ $< deps/libecc/build/libarith.a deps/libecc/build/libec.a deps/libecc/build/libsign.a
+	$(CC) -fno-builtin-printf $(CFLAGS) $(CFLAGS_LINK_TO_LIBECC) $(LDFLAGS) -o $@ $< deps/libecc/build/libarith.a deps/libecc/build/libec.a deps/libecc/build/libsign.a
 	$(OBJCOPY) --only-keep-debug $@ $@.debug
 	$(OBJCOPY) --strip-debug --strip-all $@
 
 build/secp256r1_blake160_test: c/secp256r1_blake160_test.c deps/libecc/build/libarith.a deps/libecc/build/libec.a deps/libecc/build/libsign.a
-	$(CC) $(CFLAGS) $(CFLAGS_LINK_TO_LIBECC) $(LDFLAGS) -o $@ $^
+	$(CC) -fno-builtin-printf $(CFLAGS) $(CFLAGS_LINK_TO_LIBECC) $(LDFLAGS) -o $@ $^
 	$(OBJCOPY) --only-keep-debug $@ $@.debug
 	$(OBJCOPY) --strip-debug --strip-all $@
 
