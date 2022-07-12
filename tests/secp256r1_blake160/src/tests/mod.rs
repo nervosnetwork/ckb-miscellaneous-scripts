@@ -5,8 +5,6 @@ use p256::ecdsa::{
     SigningKey,
 };
 
-use bytes::{BufMut, BytesMut};
-
 use ckb_traits::{CellDataProvider, HeaderProvider};
 use ckb_types::{
     bytes::Bytes,
@@ -18,7 +16,7 @@ use lazy_static::lazy_static;
 use std::collections::HashMap;
 
 pub const MAX_CYCLES: u64 = std::u64::MAX;
-pub const SIGNATURE_SIZE: usize = 65;
+pub const SIGNATURE_SIZE: usize = 64;
 
 lazy_static! {
     pub static ref SIGHASH_ALL_BIN: Bytes =
@@ -85,6 +83,7 @@ pub fn sign_tx_by_input_group(
                 let mut blake2b = ckb_hash::new_blake2b();
                 let mut message = [0u8; 32];
                 blake2b.update(&tx_hash.raw_data());
+                println!("blake2 tx hash: {:x}", &tx_hash.raw_data());
                 // digest the first witness
                 let witness = WitnessArgs::new_unchecked(tx.witnesses().get(i).unwrap().unpack());
                 let zero_lock: Bytes = {
@@ -100,30 +99,29 @@ pub fn sign_tx_by_input_group(
                 let witness_len = witness_for_digest.as_bytes().len() as u64;
                 blake2b.update(&witness_len.to_le_bytes());
                 blake2b.update(&witness_for_digest.as_bytes());
+                println!(
+                    "blake2 witness: len {} data {:x}",
+                    witness_len,
+                    witness_for_digest.as_bytes()
+                );
                 ((i + 1)..(i + len)).for_each(|n| {
                     let witness = tx.witnesses().get(n).unwrap();
                     let witness_len = witness.raw_data().len() as u64;
                     blake2b.update(&witness_len.to_le_bytes());
                     blake2b.update(&witness.raw_data());
+                    println!(
+                        "blake2 witness: len {} data {:x}",
+                        witness_len,
+                        &witness.raw_data()
+                    );
                 });
                 blake2b.finalize(&mut message);
                 let sig = key.sign(&message);
                 let sig_bytes = sig.as_bytes();
+                println!("signature: len({}) {:02x?}", sig_bytes.len(), sig_bytes);
+                println!("message: len({}) {:02x?}", message.len(), message);
 
-                let verifying_key = key.verifying_key().to_encoded_point(false);
-                let verifying_key_bytes = &verifying_key.as_bytes()[1..];
-
-                let mut buf = BytesMut::with_capacity(verifying_key_bytes.len() + sig_bytes.len());
-                buf.put(verifying_key_bytes);
-                buf.put(sig_bytes);
-                let bytes = buf.freeze();
-                dbg!(&verifying_key_bytes, sig_bytes, &bytes);
-                println!(
-                    "verifying_key: len({}) {:02X?}",
-                    verifying_key_bytes.len(),
-                    verifying_key_bytes
-                );
-                println!("bytes: len({}) {:02X?}", bytes.len(), bytes);
+                let bytes = Bytes::copy_from_slice(&sig_bytes);
 
                 witness
                     .as_builder()

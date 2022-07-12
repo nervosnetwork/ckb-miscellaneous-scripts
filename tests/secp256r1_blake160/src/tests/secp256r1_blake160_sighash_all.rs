@@ -30,11 +30,12 @@ const ERROR_PUBKEY_BLAKE160_HASH: i8 = -31;
 
 fn debug_printer(script: &Byte32, msg: &str) {
     let slice = script.as_slice();
-    let str = format!(
+    let _str = format!(
         "Script({:x}{:x}{:x}{:x}{:x})",
         slice[0], slice[1], slice[2], slice[3], slice[4]
     );
-    println!("{:?}: {}", str, msg);
+    // println!("{:?}: {}", str, msg);
+    print!("{}", msg);
 }
 
 fn get_pk_bytes(pubkey: &VerifyingKey) -> Bytes {
@@ -116,7 +117,7 @@ fn gen_tx_with_grouped_args<R: Rng>(
         .output_data(Bytes::new().pack());
 
     for (args, inputs_size) in grouped_args {
-        dbg!(&args, inputs_size);
+        println!("input args {:x}, size {}", args, inputs_size);
         // setup dummy input unlock script
         for _ in 0..inputs_size {
             let previous_tx_hash = {
@@ -222,7 +223,6 @@ fn build_resolved_tx(data_loader: &DummyDataLoader, tx: &TransactionView) -> Res
 fn get_random_signing_key() -> SigningKey {
     let x = &hex!("c9afa9d845ba75166b5c215767b1d6934e50c3db36e89b127b8a622b120f6721");
     let sk = SigningKey::from_bytes(x).unwrap();
-    dbg!(&sk.verifying_key());
     sk
 }
 

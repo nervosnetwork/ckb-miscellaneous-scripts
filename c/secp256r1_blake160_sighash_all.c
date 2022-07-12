@@ -132,7 +132,6 @@ int main() {
            args_bytes_seg.size);
     buf_print("import public key failed", args_bytes_seg.ptr,
               args_bytes_seg.size);
-    return -42;
     return ERROR_ENCODING;
   }
 
@@ -158,7 +157,7 @@ int main() {
 
   // The lock field must be 65 byte long to represent a (possibly) valid
   // signature.
-  if (lock_bytes_seg.size != LOCK_SIZE) {
+  if (lock_bytes_seg.size != SIGNATURE_SIZE) {
     return ERROR_ARGUMENTS_LEN;
   }
   // We keep the signature in the temporary location, since later we will modify
@@ -182,6 +181,7 @@ int main() {
   blake2b_state blake2b_ctx;
   blake2b_init(&blake2b_ctx, BLAKE2B_BLOCK_SIZE);
   blake2b_update(&blake2b_ctx, tx_hash, BLAKE2B_BLOCK_SIZE);
+  buf_print("blake2b tx_hash", tx_hash, BLAKE2B_BLOCK_SIZE);
 
   // We've already saved the signature above to a different location. We can
   // then modify the witness object in place to save both memory usage and
@@ -193,6 +193,8 @@ int main() {
   blake2b_update(&blake2b_ctx, (char *)&witness_len, sizeof(uint64_t));
   // Now let's hash the first modified witness.
   blake2b_update(&blake2b_ctx, temp, witness_len);
+  printf("updating blake2b len %d ", witness_len);
+  buf_print("data", temp, witness_len);
 
   // Let's loop and hash all witnesses with the same indices as the remaining
   // input cells using current running lock script.
@@ -217,6 +219,8 @@ int main() {
     // a 64-bit unsigned little endian integer.
     blake2b_update(&blake2b_ctx, (char *)&len, sizeof(uint64_t));
     blake2b_update(&blake2b_ctx, temp, len);
+    printf("updating blake2b len %d ", len);
+    buf_print("data", temp, len);
     i += 1;
   }
   // For safety consideration, this lock script will also hash and guard all
@@ -245,6 +249,8 @@ int main() {
     // a 64-bit unsigned little endian integer.
     blake2b_update(&blake2b_ctx, (char *)&len, sizeof(uint64_t));
     blake2b_update(&blake2b_ctx, temp, len);
+    printf("updating blake2b len %d ", len);
+    buf_print("data", temp, len);
     i += 1;
   }
   // Now the message preparation is completed.
@@ -257,9 +263,11 @@ int main() {
   // contract, you don't have to wait for the foundation to ship a new
   // cryptographic algorithm. You can just build and ship your own.
 
-  if (secp256r1_verify_signature(context, lock_bytes + PUBKEY_SIZE,
-                                 SIGNATURE_SIZE, &pub_key, message,
-                                 BLAKE160_SIZE)) {
+  if (secp256r1_verify_signature(context, lock_bytes, SIGNATURE_SIZE, &pub_key,
+                                 message, BLAKE2B_BLOCK_SIZE)) {
+    pub_key_print("pub_key", &pub_key);
+    buf_print("signature", lock_bytes, SIGNATURE_SIZE);
+    buf_print("message", message, BLAKE2B_BLOCK_SIZE);
     return ERROR_SECP_PARSE_SIGNATURE;
   };
 
