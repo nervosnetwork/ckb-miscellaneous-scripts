@@ -69,8 +69,9 @@ int secp256r1_context_init(secp256r1_context_t *context) {
 }
 
 ATTRIBUTE_WARN_UNUSED_RET static int
-secp256r1_verify_signature(secp256r1_context_t context, u8 *sig, u8 siglen,
-                           const ec_pub_key *pub_key, const u8 *m, u32 mlen) {
+secp256r1_verify_signature(secp256r1_context_t context, const u8 *sig,
+                           u8 siglen, const ec_pub_key *pub_key, const u8 *m,
+                           u32 mlen) {
   int ret;
   MUST_HAVE(sig != NULL, ret, err);
   ret = ec_verify(sig, siglen, pub_key, m, mlen, context.sig_algo,
@@ -153,3 +154,11 @@ secp256r1_pub_key_export_to_aff_buf(secp256r1_context_t context,
                                     u8 pub_key_buf_len) {
   return ec_pub_key_export_to_aff_buf(pub_key, pub_key_buf, pub_key_buf_len);
 };
+
+ATTRIBUTE_WARN_UNUSED_RET static int
+secp256r1_get_key_pair_from_priv_key_buf(secp256r1_context_t context,
+                                         ec_key_pair *kp, const u8 *priv_key,
+                                         u8 priv_key_len) {
+  return ec_key_pair_import_from_priv_key_buf(kp, &context.ec_params, priv_key,
+                                              priv_key_len, context.sig_algo);
+}
