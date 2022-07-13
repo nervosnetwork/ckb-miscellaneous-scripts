@@ -4,7 +4,10 @@ use super::{
 };
 use ckb_chain_spec::consensus::{Consensus, ConsensusBuilder};
 use ckb_crypto::secp::{Generator, Privkey};
-use p256::ecdsa::{SigningKey, VerifyingKey};
+use p256::ecdsa::{
+    signature::{Signature, Signer},
+    SigningKey, VerifyingKey,
+};
 
 use ckb_script::{TransactionScriptsVerifier, TxVerifyEnv};
 use ckb_types::core::hardfork::HardForkSwitch;
@@ -22,6 +25,7 @@ use ckb_types::{
     H256,
 };
 use hex_literal::hex;
+use rand::rngs::StdRng;
 use rand::{thread_rng, Rng, SeedableRng};
 
 const ERROR_ENCODING: i8 = -2;
@@ -43,7 +47,7 @@ fn get_pk_bytes(pubkey: &VerifyingKey) -> Bytes {
 }
 
 fn gen_tx(dummy: &mut DummyDataLoader, lock_args: Bytes) -> TransactionView {
-    let mut rng = thread_rng();
+    let mut rng = <StdRng as SeedableRng>::from_seed([42u8; 32]);
     gen_tx_with_grouped_args(dummy, vec![(lock_args, 1)], &mut rng)
 }
 

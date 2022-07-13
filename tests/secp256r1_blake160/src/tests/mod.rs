@@ -67,6 +67,59 @@ pub fn sign_tx(tx: TransactionView, key: &SigningKey) -> TransactionView {
     sign_tx_by_input_group(tx, key, 0, witnesses_len)
 }
 
+pub fn get_blake2_hash_for_input_group(
+    tx: TransactionView,
+    start_index: usize,
+    wintess_num: usize,
+) -> [u8; 32] {
+    let mut blake2b = ckb_hash::new_blake2b();
+    let mut message = [0u8; 32];
+    blake2b.update(&tx.hash().raw_data());
+    // digest the first witness
+    let witness = WitnessArgs::new_unchecked(tx.witnesses().get(start_index).unwrap().unpack());
+    println!(
+        "RUST initial witness: len {} data {:x}",
+        tx.witnesses().get(start_index).unwrap().len(),
+        tx.witnesses().get(start_index).unwrap()
+    );
+    let zero_lock: Bytes = {
+        let mut buf = Vec::new();
+        buf.resize(SIGNATURE_SIZE, 0);
+        buf.into()
+    };
+    let witness_for_digest = witness
+        .clone()
+        .as_builder()
+        .lock(Some(zero_lock).pack())
+        .build();
+    let witness_len = witness_for_digest.as_bytes().len() as u64;
+    blake2b.update(&witness_len.to_le_bytes());
+    blake2b.update(&witness_for_digest.as_bytes());
+    println!(
+        "RUST blake2 witness: len {} data {:x}",
+        witness_len,
+        witness_for_digest.as_bytes()
+    );
+    ((start_index + 1)..(start_index + wintess_num)).for_each(|n| {
+        let witness = tx.witnesses().get(n).unwrap();
+        let witness_len = witness.raw_data().len() as u64;
+        blake2b.update(&witness_len.to_le_bytes());
+        blake2b.update(&witness.raw_data());
+        println!(
+            "RUST blake2 witness: len {} data {:x}",
+            witness_len,
+            &witness.raw_data()
+        );
+    });
+    blake2b.finalize(&mut message);
+    println!(
+        "RUST blake2 hash result: len {} data {:x}",
+        message.len(),
+        &message.pack()
+    );
+    return message;
+}
+
 pub fn sign_tx_by_input_group(
     tx: TransactionView,
     key: &SigningKey,
@@ -80,10 +133,10 @@ pub fn sign_tx_by_input_group(
         .enumerate()
         .map(|(i, _)| {
             if i == begin_index {
+                get_blake2_hash_for_input_group(tx.clone(), i, len);
                 let mut blake2b = ckb_hash::new_blake2b();
                 let mut message = [0u8; 32];
                 blake2b.update(&tx_hash.raw_data());
-                println!("blake2 tx hash: {:x}", &tx_hash.raw_data());
                 // digest the first witness
                 let witness = WitnessArgs::new_unchecked(tx.witnesses().get(i).unwrap().unpack());
                 let zero_lock: Bytes = {
@@ -99,18 +152,13 @@ pub fn sign_tx_by_input_group(
                 let witness_len = witness_for_digest.as_bytes().len() as u64;
                 blake2b.update(&witness_len.to_le_bytes());
                 blake2b.update(&witness_for_digest.as_bytes());
-                println!(
-                    "blake2 witness: len {} data {:x}",
-                    witness_len,
-                    witness_for_digest.as_bytes()
-                );
                 ((i + 1)..(i + len)).for_each(|n| {
                     let witness = tx.witnesses().get(n).unwrap();
                     let witness_len = witness.raw_data().len() as u64;
                     blake2b.update(&witness_len.to_le_bytes());
                     blake2b.update(&witness.raw_data());
                     println!(
-                        "blake2 witness: len {} data {:x}",
+                        "RUST blake2 witness: len {} data {:x}",
                         witness_len,
                         &witness.raw_data()
                     );
@@ -118,8 +166,6 @@ pub fn sign_tx_by_input_group(
                 blake2b.finalize(&mut message);
                 let sig = key.sign(&message);
                 let sig_bytes = sig.as_bytes();
-                println!("signature: len({}) {:02x?}", sig_bytes.len(), sig_bytes);
-                println!("message: len({}) {:02x?}", message.len(), message);
 
                 let bytes = Bytes::copy_from_slice(&sig_bytes);
 
