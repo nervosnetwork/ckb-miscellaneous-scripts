@@ -265,9 +265,6 @@ int main() {
 
   if (secp256r1_verify_signature(context, lock_bytes, SIGNATURE_SIZE, &pub_key,
                                  message, BLAKE2B_BLOCK_SIZE)) {
-    pub_key_print("pub_key", &pub_key);
-    buf_print("signature", lock_bytes, SIGNATURE_SIZE);
-    buf_print("message", message, BLAKE2B_BLOCK_SIZE);
     return ERROR_SECP_PARSE_SIGNATURE;
   };
 

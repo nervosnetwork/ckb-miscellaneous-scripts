@@ -18,22 +18,21 @@
 #include "rand.h"
 
 /* Print the buffer of a given size */
-void buf_print(const char *msg, const u8 *buf, u16 buflen)
-{
-	u32 i;
+void buf_print(const char *msg, const u8 *buf, u16 buflen) {
+  u32 i;
 
-	if ((buf == NULL) || (msg == NULL)) {
-		goto err;
-	}
+  if ((buf == NULL) || (msg == NULL)) {
+    goto err;
+  }
 
-	printf("%s: ", msg);
-	for (i = 0; i < (u32)buflen; i++) {
-		printf("%02x", buf[i]);
-	}
-	printf("\n");
+  printf("%s: ", msg);
+  for (i = 0; i < (u32)buflen; i++) {
+    printf("%02x", buf[i]);
+  }
+  printf("\n");
 
 err:
-	return;
+  return;
 }
 
 /* TODO: Don't know why these are still needed */
@@ -77,6 +76,16 @@ secp256r1_verify_signature(secp256r1_context_t context, u8 *sig, u8 siglen,
   ret = ec_verify(sig, siglen, pub_key, m, mlen, context.sig_algo,
                   context.hash_algo, NULL, 0);
   if (ret) {
+    const int temp_pub_key_buf_size = 64;
+    u8 temp_pub_key_buf[temp_pub_key_buf_size];
+    ec_pub_key_export_to_aff_buf(pub_key, temp_pub_key_buf,
+                                 temp_pub_key_buf_size);
+    buf_print("VM pub key", temp_pub_key_buf, temp_pub_key_buf_size);
+    printf("VM signature verification failed: %d\n", ret);
+    printf("VM siglen %d, mlen %d, sig_algo %d, hash_algo %d\n", siglen, mlen,
+           context.sig_algo, context.hash_algo);
+    buf_print("VM signature", sig, siglen);
+    buf_print("VM message", m, mlen);
     ret = -1;
     goto err;
   }
@@ -136,4 +145,11 @@ secp256r1_pub_key_export_to_buf(secp256r1_context_t context,
                                 const ec_pub_key *pub_key, u8 *pub_key_buf,
                                 u8 pub_key_buf_len) {
   return ec_pub_key_export_to_buf(pub_key, pub_key_buf, pub_key_buf_len);
+};
+
+ATTRIBUTE_WARN_UNUSED_RET int
+secp256r1_pub_key_export_to_aff_buf(secp256r1_context_t context,
+                                    const ec_pub_key *pub_key, u8 *pub_key_buf,
+                                    u8 pub_key_buf_len) {
+  return ec_pub_key_export_to_aff_buf(pub_key, pub_key_buf, pub_key_buf_len);
 };
