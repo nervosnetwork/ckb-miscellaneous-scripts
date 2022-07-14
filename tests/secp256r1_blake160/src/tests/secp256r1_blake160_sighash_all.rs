@@ -28,6 +28,7 @@ use rand::{thread_rng, Rng, SeedableRng};
 const ERROR_ENCODING: i8 = -2;
 const ERROR_WITNESS_SIZE: i8 = -22;
 const ERROR_PUBKEY_BLAKE160_HASH: i8 = -31;
+const ERROR_SECP_VERIFICATION: i8 = -12;
 
 fn debug_printer(script: &Byte32, msg: &str) {
     let slice = script.as_slice();
@@ -221,7 +222,7 @@ fn build_resolved_tx(data_loader: &DummyDataLoader, tx: &TransactionView) -> Res
     }
 }
 
-fn get_random_signing_key() -> SigningKey {
+fn get_sample_signing_key() -> SigningKey {
     let x = &hex!("c9afa9d845ba75166b5c215767b1d6934e50c3db36e89b127b8a622b120f6721");
     let sk = SigningKey::from_bytes(x).unwrap();
     sk
@@ -230,7 +231,7 @@ fn get_random_signing_key() -> SigningKey {
 #[test]
 fn test_sighash_all_unlock() {
     let mut data_loader = DummyDataLoader::new();
-    let privkey = get_random_signing_key();
+    let privkey = get_sample_signing_key();
     let pubkey = privkey.verifying_key();
     let tx = gen_tx(&mut data_loader, get_pk_bytes(&pubkey));
     let tx = sign_tx(tx, &privkey);
@@ -247,10 +248,9 @@ fn test_sighash_all_unlock() {
 #[test]
 fn test_sighash_all_with_extra_witness_unlock() {
     let mut data_loader = DummyDataLoader::new();
-    let privkey = get_random_signing_key();
+    let privkey = get_sample_signing_key();
     let pubkey = privkey.verifying_key();
-    let pubkey_hash = Bytes::copy_from_slice(pubkey.to_encoded_point(true).as_bytes());
-    let tx = gen_tx(&mut data_loader, pubkey_hash);
+    let tx = gen_tx(&mut data_loader, get_pk_bytes(&pubkey));
     let extract_witness = vec![1, 2, 3, 4];
     let tx = tx
         .as_advanced_builder()
@@ -293,19 +293,18 @@ fn test_sighash_all_with_extra_witness_unlock() {
             TransactionScriptsVerifier::new(&resolved_tx, &consensus, &data_loader, &tx_env)
                 .verify(MAX_CYCLES);
         assert!(verify_result.is_err());
-        let error = format!("error code {}", ERROR_PUBKEY_BLAKE160_HASH);
+        let error = format!("error code {}", ERROR_SECP_VERIFICATION);
+        dbg!(&verify_result.clone().unwrap_err().to_string());
         assert!(verify_result.unwrap_err().to_string().contains(&error));
     }
 }
 
 #[test]
 fn test_sighash_all_with_grouped_inputs_unlock() {
-    let mut rng = thread_rng();
     let mut data_loader = DummyDataLoader::new();
-    let privkey = get_random_signing_key();
+    let privkey = get_sample_signing_key();
     let pubkey = privkey.verifying_key();
-    let pubkey_hash = Bytes::copy_from_slice(pubkey.to_encoded_point(true).as_bytes());
-    let tx = gen_tx_with_grouped_args(&mut data_loader, vec![(pubkey_hash, 2)], &mut rng);
+    let tx = gen_tx(&mut data_loader, get_pk_bytes(&pubkey));
     {
         let tx = sign_tx(tx.clone(), &privkey);
         let resolved_tx = build_resolved_tx(&data_loader, &tx);
@@ -342,7 +341,8 @@ fn test_sighash_all_with_grouped_inputs_unlock() {
             TransactionScriptsVerifier::new(&resolved_tx, &consensus, &data_loader, &tx_env)
                 .verify(MAX_CYCLES);
         assert!(verify_result.is_err());
-        let error = format!("error code {}", ERROR_PUBKEY_BLAKE160_HASH);
+        dbg!(&verify_result.clone().unwrap_err().to_string());
+        let error = format!("error code {}", ERROR_SECP_VERIFICATION);
         assert!(verify_result.unwrap_err().to_string().contains(&error));
     }
 }
@@ -352,11 +352,11 @@ fn test_sighash_all_with_2_different_inputs_unlock() {
     let mut rng = thread_rng();
     let mut data_loader = DummyDataLoader::new();
     // key1
-    let privkey = get_random_signing_key();
+    let privkey = get_sample_signing_key();
     let pubkey = privkey.verifying_key();
     let pubkey_hash = Bytes::copy_from_slice(pubkey.to_encoded_point(true).as_bytes());
     // key2
-    let privkey2 = get_random_signing_key();
+    let privkey2 = get_sample_signing_key();
     let pubkey2 = privkey2.verifying_key();
     let pubkey_hash2 = Bytes::copy_from_slice(pubkey2.to_encoded_point(true).as_bytes());
 
@@ -381,14 +381,13 @@ fn test_sighash_all_with_2_different_inputs_unlock() {
 #[test]
 fn test_signing_with_wrong_key() {
     let mut data_loader = DummyDataLoader::new();
-    let privkey = get_random_signing_key();
+    let privkey = get_sample_signing_key();
     let pubkey = privkey.verifying_key();
-    let pubkey_hash = Bytes::copy_from_slice(pubkey.to_encoded_point(true).as_bytes());
+    let tx = gen_tx(&mut data_loader, get_pk_bytes(&pubkey));
     let wrong_privkey = SigningKey::from_bytes(&hex!(
         "c9afa9d845ba75166b5c215767b1d6934e50c3db36e89b127b8a622b120f6722"
     ))
     .unwrap();
-    let tx = gen_tx(&mut data_loader, pubkey_hash);
     let tx = sign_tx(tx, &wrong_privkey);
     let resolved_tx = build_resolved_tx(&data_loader, &tx);
     let consensus = gen_consensus();
@@ -397,7 +396,7 @@ fn test_signing_with_wrong_key() {
         TransactionScriptsVerifier::new(&resolved_tx, &consensus, &data_loader, &tx_env)
             .verify(MAX_CYCLES);
     assert!(verify_result.is_err());
-    let error = format!("error code {}", ERROR_PUBKEY_BLAKE160_HASH);
+    let error = format!("error code {}", ERROR_SECP_VERIFICATION);
     assert!(verify_result.unwrap_err().to_string().contains(&error));
 }
 
@@ -421,7 +420,8 @@ fn test_signing_wrong_tx_hash() {
         TransactionScriptsVerifier::new(&resolved_tx, &consensus, &data_loader, &tx_env)
             .verify(MAX_CYCLES);
     assert!(verify_result.is_err());
-    let error = format!("error code {}", ERROR_PUBKEY_BLAKE160_HASH);
+    let error = format!("error code {}", ERROR_ENCODING);
+    dbg!(&verify_result.clone().unwrap_err().to_string());
     assert!(verify_result.unwrap_err().to_string().contains(&error));
 }
 
@@ -473,11 +473,11 @@ fn test_sighash_all_2_in_2_out_cycles() {
     let mut rng = rand::rngs::SmallRng::seed_from_u64(42);
 
     // key1
-    let privkey = get_random_signing_key();
+    let privkey = get_sample_signing_key();
     let pubkey = privkey.verifying_key();
     let pubkey_hash = Bytes::copy_from_slice(pubkey.to_encoded_point(true).as_bytes());
     // key2
-    let privkey2 = get_random_signing_key();
+    let privkey2 = get_sample_signing_key();
     let pubkey2 = privkey2.verifying_key();
     let pubkey_hash2 = Bytes::copy_from_slice(pubkey2.to_encoded_point(true).as_bytes());
 
@@ -504,7 +504,7 @@ fn test_sighash_all_2_in_2_out_cycles() {
 fn test_sighash_all_witness_append_junk_data() {
     let mut rng = thread_rng();
     let mut data_loader = DummyDataLoader::new();
-    let privkey = get_random_signing_key();
+    let privkey = get_sample_signing_key();
     let pubkey = privkey.verifying_key();
     let pubkey_hash = Bytes::copy_from_slice(pubkey.to_encoded_point(true).as_bytes());
 
@@ -544,7 +544,7 @@ fn test_sighash_all_witness_args_ambiguity() {
 
     let mut rng = thread_rng();
     let mut data_loader = DummyDataLoader::new();
-    let privkey = get_random_signing_key();
+    let privkey = get_sample_signing_key();
     let pubkey = privkey.verifying_key();
     let pubkey_hash = Bytes::copy_from_slice(pubkey.to_encoded_point(true).as_bytes());
 
@@ -590,7 +590,7 @@ fn test_sighash_all_witnesses_ambiguity() {
 
     let mut rng = thread_rng();
     let mut data_loader = DummyDataLoader::new();
-    let privkey = get_random_signing_key();
+    let privkey = get_sample_signing_key();
     let pubkey = privkey.verifying_key();
     let pubkey_hash = Bytes::copy_from_slice(pubkey.to_encoded_point(true).as_bytes());
 
@@ -633,7 +633,7 @@ fn test_sighash_all_witnesses_ambiguity() {
 fn test_sighash_all_cover_extra_witnesses() {
     let mut rng = thread_rng();
     let mut data_loader = DummyDataLoader::new();
-    let privkey = get_random_signing_key();
+    let privkey = get_sample_signing_key();
     let pubkey = privkey.verifying_key();
     let pubkey_hash = Bytes::copy_from_slice(pubkey.to_encoded_point(true).as_bytes());
 
