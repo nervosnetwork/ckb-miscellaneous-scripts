@@ -4,10 +4,7 @@ use super::{
 };
 use ckb_chain_spec::consensus::{Consensus, ConsensusBuilder};
 use ckb_crypto::secp::{Generator, Privkey};
-use p256::ecdsa::{
-    signature::{Signature, Signer},
-    SigningKey, VerifyingKey,
-};
+use p256::ecdsa::{SigningKey, VerifyingKey};
 
 use ckb_script::{TransactionScriptsVerifier, TxVerifyEnv};
 use ckb_types::core::hardfork::HardForkSwitch;
