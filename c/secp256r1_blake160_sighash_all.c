@@ -163,7 +163,7 @@ int main() {
   }
   ec_pub_key pub_key;
   if (secp256r1_pub_key_import_from_aff_buf(
-          context, &pub_key, args_bytes_seg.ptr, args_bytes_seg.size)) {
+          &context, &pub_key, args_bytes_seg.ptr, args_bytes_seg.size)) {
     printf("args_bytes_seg: ptr %p, size %d", args_bytes_seg.ptr,
            args_bytes_seg.size);
     buf_print("import public key failed", args_bytes_seg.ptr,
@@ -300,10 +300,12 @@ int main() {
   // cryptographic algorithm. You can just build and ship your own.
 
   ec_key_pair kp;
-  local_memset(&kp, 0, sizeof(kp));
-  secp256r1_get_key_pair_from_priv_key_buf(context, &kp, test_priv_key,
+  if (local_memset(&kp, 0, sizeof(kp))) {
+    return ERROR_UNREACHABLE;
+  }
+  secp256r1_get_key_pair_from_priv_key_buf(&context, &kp, test_priv_key,
                                            sizeof(test_priv_key));
-  if (secp256r1_verify_signature(context, test_signature,
+  if (secp256r1_verify_signature(&context, test_signature,
                                  sizeof(test_signature), &kp.pub_key,
                                  test_message, sizeof(test_message))) {
     printf("TESTING fixed data FAILED\n");
@@ -311,7 +313,7 @@ int main() {
     printf("TESTING fixed data succeeded\n");
   };
 
-  if (secp256r1_verify_signature(context, lock_bytes, SIGNATURE_SIZE,
+  if (secp256r1_verify_signature(&context, lock_bytes, SIGNATURE_SIZE,
                                  &kp.pub_key, message, BLAKE2B_BLOCK_SIZE)) {
     printf("TESTING with public key from private key FAILED\n");
   } else {
@@ -319,13 +321,15 @@ int main() {
   };
 
   ec_pub_key pub_key2;
-  local_memset(&pub_key2, 0, sizeof(pub_key2));
-  if (secp256r1_pub_key_import_from_aff_buf(context, &pub_key2, test_pub_key,
+  if (local_memset(&pub_key2, 0, sizeof(pub_key2))) {
+    return ERROR_UNREACHABLE;
+  }
+  if (secp256r1_pub_key_import_from_aff_buf(&context, &pub_key2, test_pub_key,
                                             sizeof(test_pub_key))) {
     buf_print("import public key failed", test_pub_key, sizeof(test_pub_key));
     return ERROR_ENCODING;
   }
-  if (secp256r1_verify_signature(context, test_signature,
+  if (secp256r1_verify_signature(&context, test_signature,
                                  sizeof(test_signature), &pub_key2,
                                  test_message, sizeof(test_message))) {
     printf("TESTING with fixed public_key imported from buffer FAILED\n");
@@ -334,21 +338,33 @@ int main() {
   };
 
   ec_pub_key pub_key3;
-  local_memset(&pub_key3, 0, sizeof(pub_key3));
-  if (secp256r1_pub_key_import_from_aff_buf(context, &pub_key3, test_pub_key,
-                                            sizeof(test_pub_key))) {
-    buf_print("import public key failed", test_pub_key, sizeof(test_pub_key));
+  if (local_memset(&pub_key3, 0, sizeof(pub_key3))) {
+    return ERROR_UNREACHABLE;
+  }
+  const u8 buf_size = 64;
+  u8 temp_buf[buf_size];
+  if (local_memset(&temp_buf, 0, sizeof(temp_buf))) {
+    return ERROR_UNREACHABLE;
+  }
+  if (ec_pub_key_export_to_aff_buf(&kp.pub_key, temp_buf, buf_size)) {
     return ERROR_ENCODING;
   }
-  if (secp256r1_verify_signature(context, test_signature,
+  if (secp256r1_pub_key_import_from_aff_buf(&context, &pub_key3, temp_buf,
+                                            buf_size)) {
+    return ERROR_ENCODING;
+  }
+  if (secp256r1_verify_signature(&context, test_signature,
                                  sizeof(test_signature), &pub_key2,
                                  test_message, sizeof(test_message))) {
-    printf("TESTING with fixed public_key imported from buffer FAILED\n");
+    printf("TESTING with public_key imported from the buffer exported from key "
+           "pair FAILED\n");
   } else {
-    printf("TESTING with fixed public_key imported from buffer succeeded\n");
+    printf("TESTING with public_key imported from the buffer exported from key "
+           "pair succeeded\n");
   };
 
-  if (secp256r1_verify_signature(context, test_signature,
+  // pub_key from arguments
+  if (secp256r1_verify_signature(&context, test_signature,
                                  sizeof(test_signature), &pub_key, test_message,
                                  sizeof(test_message))) {
     printf("TESTING with public_key from arguments FAILED\n");
@@ -361,8 +377,11 @@ int main() {
   my_pub_key_print("pub_key (public key passed from rust)", &pub_key);
   my_pub_key_print("pub_key2 (public key imported from fixed buffer)",
                    &pub_key2);
+  my_pub_key_print(
+      "pub_key3 (public key imported from the buffer exported from key pair)",
+      &pub_key3);
 
-  if (secp256r1_verify_signature(context, lock_bytes, SIGNATURE_SIZE, &pub_key,
+  if (secp256r1_verify_signature(&context, lock_bytes, SIGNATURE_SIZE, &pub_key,
                                  message, BLAKE2B_BLOCK_SIZE)) {
     return ERROR_SECP_PARSE_SIGNATURE;
   };
