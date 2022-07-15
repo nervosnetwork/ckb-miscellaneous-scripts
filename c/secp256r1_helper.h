@@ -18,25 +18,38 @@
 #include "rand.h"
 
 /* Print the buffer of a given size */
-void buf_print(const char *msg, const u8 *buf, u16 buflen) {
+void my_buf_print(const char *msg, const u8 *buf, u16 buflen) {
   u32 i;
 
-  if ((buf == NULL) || (msg == NULL)) {
-    goto err;
+  if (buf == NULL) {
+    return;
   }
 
-  printf("%s: ", msg);
+  if (msg != NULL) {
+    printf("%s: ", msg);
+  }
+
   for (i = 0; i < (u32)buflen; i++) {
     printf("%02x", buf[i]);
   }
   printf("\n");
+}
 
-err:
-  return;
+/* Print the given public key */
+void my_pub_key_print(char *msg, const ec_pub_key *pub_key) {
+  const u8 buf_size = 64;
+  u8 temp_buf[buf_size];
+  if (ec_pub_key_export_to_aff_buf(pub_key, temp_buf, buf_size)) {
+    printf("export public key to buf failed");
+  } else {
+    my_buf_print(msg, temp_buf, buf_size);
+  }
 }
 
 /* TODO: Don't know why these are still needed */
 void ext_printf(const char *format, ...) {
+  // TODO: ckb-c-stdlib does not seem to support vprintf
+
   // va_list arglist;
   // va_start(arglist, format);
   // vprintf(format, arglist);
@@ -77,16 +90,12 @@ secp256r1_verify_signature(const secp256r1_context_t *context, const u8 *sig,
   ret = ec_verify(sig, siglen, pub_key, m, mlen, context->sig_algo,
                   context->hash_algo, NULL, 0);
   if (ret) {
-    const int temp_pub_key_buf_size = 64;
-    u8 temp_pub_key_buf[temp_pub_key_buf_size];
-    ec_pub_key_export_to_aff_buf(pub_key, temp_pub_key_buf,
-                                 temp_pub_key_buf_size);
-    buf_print("VM pub key", temp_pub_key_buf, temp_pub_key_buf_size);
     printf("VM signature verification failed: %d\n", ret);
     printf("VM siglen %d, mlen %d, sig_algo %d, hash_algo %d\n", siglen, mlen,
            context->sig_algo, context->hash_algo);
-    buf_print("VM signature", sig, siglen);
-    buf_print("VM message", m, mlen);
+    my_pub_key_print("VM pub key", pub_key);
+    my_buf_print("VM signature", sig, siglen);
+    my_buf_print("VM message", m, mlen);
     ret = -1;
     goto err;
   }
@@ -136,9 +145,13 @@ secp256r1_pub_key_import_from_buf(const secp256r1_context_t *context,
 ATTRIBUTE_WARN_UNUSED_RET int secp256r1_pub_key_import_from_aff_buf(
     const secp256r1_context_t *context, ec_pub_key *pub_key,
     const u8 *pub_key_buf, u8 pub_key_buf_len) {
-  return ec_pub_key_import_from_aff_buf(pub_key, &context->ec_params,
-                                        pub_key_buf, pub_key_buf_len,
-                                        context->sig_algo);
+  int ret =
+      ec_pub_key_import_from_aff_buf(pub_key, &context->ec_params, pub_key_buf,
+                                     pub_key_buf_len, context->sig_algo);
+  if (ret) {
+    my_buf_print("import public key failed", pub_key_buf, pub_key_buf_len);
+  }
+  return ret;
 }
 
 ATTRIBUTE_WARN_UNUSED_RET int

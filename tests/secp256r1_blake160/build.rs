@@ -12,20 +12,10 @@ const PATH_PREFIX: &str = "../../build/";
 const BUF_SIZE: usize = 8 * 1024;
 const CKB_HASH_PERSONALIZATION: &[u8] = b"ckb-default-hash";
 
-const BINARIES: &[(&str, &str)] = &[
-    (
-        "secp256k1_blake160_sighash_all_system_scripts",
-        "709f3fda12f561cfacf92273c57a98fede188a3f1a59b1f888d113f9cce08649",
-    ),
-    (
-        "secp256k1_data",
-        "9799bee251b975b82c45a02154ce28cec89c5853ecc14d12b7b8cccfc19e0af4",
-    ),
-    (
-        "secp256r1_blake160_sighash_all",
-        "42afd0ed97fe70202b28d5c8aff3fc34aecfd11dbaf8fbb61ca5a76098622c2e",
-    ),
-];
+const BINARIES: &[(&str, &str)] = &[(
+    "secp256r1_blake160_sighash_all",
+    "ecd07dce703b89f90b420a5448833baad94e8d78fa46a388b30503eecfc8a636",
+)];
 
 fn main() {
     let mut bundled = includedir_codegen::start("BUNDLED_CELL");

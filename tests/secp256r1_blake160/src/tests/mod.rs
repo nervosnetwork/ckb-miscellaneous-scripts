@@ -21,8 +21,6 @@ pub const SIGNATURE_SIZE: usize = 64;
 lazy_static! {
     pub static ref SIGHASH_ALL_BIN: Bytes =
         Bytes::from(&include_bytes!("../../../../build/secp256r1_blake160_sighash_all")[..]);
-    pub static ref SECP256K1_DATA_BIN: Bytes =
-        Bytes::from(&include_bytes!("../../../../build/secp256k1_data")[..]);
 }
 
 #[derive(Default)]
@@ -77,11 +75,6 @@ pub fn get_blake2_hash_for_input_group(
     blake2b.update(&tx.hash().raw_data());
     // digest the first witness
     let witness = WitnessArgs::new_unchecked(tx.witnesses().get(start_index).unwrap().unpack());
-    println!(
-        "RUST initial witness: len {} data {:x}",
-        tx.witnesses().get(start_index).unwrap().len(),
-        tx.witnesses().get(start_index).unwrap()
-    );
     let zero_lock: Bytes = {
         let mut buf = Vec::new();
         buf.resize(SIGNATURE_SIZE, 0);
@@ -95,28 +88,13 @@ pub fn get_blake2_hash_for_input_group(
     let witness_len = witness_for_digest.as_bytes().len() as u64;
     blake2b.update(&witness_len.to_le_bytes());
     blake2b.update(&witness_for_digest.as_bytes());
-    println!(
-        "RUST blake2 witness: len {} data {:x}",
-        witness_len,
-        witness_for_digest.as_bytes()
-    );
     ((start_index + 1)..(start_index + wintess_num)).for_each(|n| {
         let witness = tx.witnesses().get(n).unwrap();
         let witness_len = witness.raw_data().len() as u64;
         blake2b.update(&witness_len.to_le_bytes());
         blake2b.update(&witness.raw_data());
-        println!(
-            "RUST blake2 witness: len {} data {:x}",
-            witness_len,
-            &witness.raw_data()
-        );
     });
     blake2b.finalize(&mut message);
-    println!(
-        "RUST blake2 hash result: len {} data {:x}",
-        message.len(),
-        &message.pack()
-    );
     return message;
 }
 
@@ -157,11 +135,6 @@ pub fn sign_tx_by_input_group(
                     let witness_len = witness.raw_data().len() as u64;
                     blake2b.update(&witness_len.to_le_bytes());
                     blake2b.update(&witness.raw_data());
-                    println!(
-                        "RUST blake2 witness: len {} data {:x}",
-                        witness_len,
-                        &witness.raw_data()
-                    );
                 });
                 blake2b.finalize(&mut message);
                 let sig = key.sign(&message);

@@ -94,42 +94,6 @@
 // object in molecule serialization format. The lock field of said WitnessArgs
 // object should contain a 65-byte recoverable signature to prove ownership.
 
-static const u8 test_signature[] = {
-    0x68, 0x64, 0xf1, 0xf1, 0xfd, 0x70, 0xe8, 0x8d, 0x8e, 0x50, 0xed,
-    0x17, 0xef, 0x8d, 0x78, 0x70, 0x15, 0xfa, 0x88, 0x3b, 0x0c, 0x34,
-    0x2e, 0xfc, 0x36, 0xd6, 0x71, 0x48, 0xc2, 0x0f, 0x41, 0x8a, 0x38,
-    0x91, 0x76, 0xba, 0x62, 0x24, 0xe2, 0x31, 0xb6, 0xa6, 0xa1, 0x3b,
-    0x1c, 0xe5, 0x8a, 0x06, 0xca, 0xa7, 0x58, 0x58, 0xd1, 0x9f, 0x3e,
-    0x68, 0xe8, 0x79, 0x0d, 0x67, 0x61, 0x7e, 0xc4, 0xe2};
-
-static const u8 test_message[] = {
-    0xf5, 0x5c, 0x2b, 0xdb, 0xac, 0x3e, 0x84, 0x03, 0x72, 0x28, 0xc3,
-    0x0c, 0x4d, 0x04, 0x99, 0xf2, 0xfa, 0x95, 0x68, 0x26, 0x62, 0x7d,
-    0x4c, 0xcf, 0xed, 0x6a, 0x01, 0xfd, 0xb6, 0x08, 0x68, 0xf1};
-
-static const u8 test_priv_key[] = {
-    0xc9, 0xaf, 0xa9, 0xd8, 0x45, 0xba, 0x75, 0x16, 0x6b, 0x5c, 0x21,
-    0x57, 0x67, 0xb1, 0xd6, 0x93, 0x4e, 0x50, 0xc3, 0xdb, 0x36, 0xe8,
-    0x9b, 0x12, 0x7b, 0x8a, 0x62, 0x2b, 0x12, 0x0f, 0x67, 0x21};
-
-static const u8 test_pub_key[] = {
-    0x60, 0xfe, 0xd4, 0xba, 0x25, 0x5a, 0x9d, 0x31, 0xc9, 0x61, 0xeb,
-    0x74, 0xc6, 0x35, 0x6d, 0x68, 0xc0, 0x49, 0xb8, 0x92, 0x3b, 0x61,
-    0xfa, 0x6c, 0xe6, 0x69, 0x62, 0x2e, 0x60, 0xf2, 0x9f, 0xb6, 0x79,
-    0x03, 0xfe, 0x10, 0x08, 0xb8, 0xbc, 0x99, 0xa4, 0x1a, 0xe9, 0xe9,
-    0x56, 0x28, 0xbc, 0x64, 0xf2, 0xf1, 0xb2, 0x0c, 0x2d, 0x7e, 0x9f,
-    0x51, 0x77, 0xa3, 0xc2, 0x94, 0xd4, 0x46, 0x22, 0x99};
-
-void my_pub_key_print(char *msg, const ec_pub_key *pub_key) {
-  const u8 buf_size = 64;
-  u8 temp_buf[buf_size];
-  if (ec_pub_key_export_to_aff_buf(pub_key, temp_buf, buf_size)) {
-    printf("export public key to buf failed");
-  } else {
-    buf_print(msg, temp_buf, buf_size);
-  }
-}
-
 int main() {
   int ret;
   uint64_t len = 0;
@@ -164,10 +128,6 @@ int main() {
   ec_pub_key pub_key;
   if (secp256r1_pub_key_import_from_aff_buf(
           &context, &pub_key, args_bytes_seg.ptr, args_bytes_seg.size)) {
-    printf("args_bytes_seg: ptr %p, size %d", args_bytes_seg.ptr,
-           args_bytes_seg.size);
-    buf_print("import public key failed", args_bytes_seg.ptr,
-              args_bytes_seg.size);
     return ERROR_ENCODING;
   }
 
@@ -217,7 +177,6 @@ int main() {
   blake2b_state blake2b_ctx;
   blake2b_init(&blake2b_ctx, BLAKE2B_BLOCK_SIZE);
   blake2b_update(&blake2b_ctx, tx_hash, BLAKE2B_BLOCK_SIZE);
-  buf_print("blake2b tx_hash", tx_hash, BLAKE2B_BLOCK_SIZE);
 
   // We've already saved the signature above to a different location. We can
   // then modify the witness object in place to save both memory usage and
@@ -229,8 +188,6 @@ int main() {
   blake2b_update(&blake2b_ctx, (char *)&witness_len, sizeof(uint64_t));
   // Now let's hash the first modified witness.
   blake2b_update(&blake2b_ctx, temp, witness_len);
-  printf("updating blake2b len %d ", witness_len);
-  buf_print("data", temp, witness_len);
 
   // Let's loop and hash all witnesses with the same indices as the remaining
   // input cells using current running lock script.
@@ -255,8 +212,6 @@ int main() {
     // a 64-bit unsigned little endian integer.
     blake2b_update(&blake2b_ctx, (char *)&len, sizeof(uint64_t));
     blake2b_update(&blake2b_ctx, temp, len);
-    printf("updating blake2b len %d ", len);
-    buf_print("data", temp, len);
     i += 1;
   }
   // For safety consideration, this lock script will also hash and guard all
@@ -285,101 +240,10 @@ int main() {
     // a 64-bit unsigned little endian integer.
     blake2b_update(&blake2b_ctx, (char *)&len, sizeof(uint64_t));
     blake2b_update(&blake2b_ctx, temp, len);
-    printf("updating blake2b len %d ", len);
-    buf_print("data", temp, len);
     i += 1;
   }
   // Now the message preparation is completed.
   blake2b_final(&blake2b_ctx, message, BLAKE2B_BLOCK_SIZE);
-
-  // We are using bitcoin's [secp256k1
-  // library](https://github.com/bitcoin-core/secp256k1) for signature
-  // verification here. To the best of our knowledge, this is an unmatched
-  // advantage of CKB: you can ship cryptographic algorithm within your smart
-  // contract, you don't have to wait for the foundation to ship a new
-  // cryptographic algorithm. You can just build and ship your own.
-
-  ec_key_pair kp;
-  if (local_memset(&kp, 0, sizeof(kp))) {
-    return ERROR_UNREACHABLE;
-  }
-  secp256r1_get_key_pair_from_priv_key_buf(&context, &kp, test_priv_key,
-                                           sizeof(test_priv_key));
-  if (secp256r1_verify_signature(&context, test_signature,
-                                 sizeof(test_signature), &kp.pub_key,
-                                 test_message, sizeof(test_message))) {
-    printf("TESTING fixed data FAILED\n");
-  } else {
-    printf("TESTING fixed data succeeded\n");
-  };
-
-  if (secp256r1_verify_signature(&context, lock_bytes, SIGNATURE_SIZE,
-                                 &kp.pub_key, message, BLAKE2B_BLOCK_SIZE)) {
-    printf("TESTING with public key from private key FAILED\n");
-  } else {
-    printf("TESTING with public key from private key succeeded\n");
-  };
-
-  ec_pub_key pub_key2;
-  if (local_memset(&pub_key2, 0, sizeof(pub_key2))) {
-    return ERROR_UNREACHABLE;
-  }
-  if (secp256r1_pub_key_import_from_aff_buf(&context, &pub_key2, test_pub_key,
-                                            sizeof(test_pub_key))) {
-    buf_print("import public key failed", test_pub_key, sizeof(test_pub_key));
-    return ERROR_ENCODING;
-  }
-  if (secp256r1_verify_signature(&context, test_signature,
-                                 sizeof(test_signature), &pub_key2,
-                                 test_message, sizeof(test_message))) {
-    printf("TESTING with fixed public_key imported from buffer FAILED\n");
-  } else {
-    printf("TESTING with fixed public_key imported from buffer succeeded\n");
-  };
-
-  ec_pub_key pub_key3;
-  if (local_memset(&pub_key3, 0, sizeof(pub_key3))) {
-    return ERROR_UNREACHABLE;
-  }
-  const u8 buf_size = 64;
-  u8 temp_buf[buf_size];
-  if (local_memset(&temp_buf, 0, sizeof(temp_buf))) {
-    return ERROR_UNREACHABLE;
-  }
-  if (ec_pub_key_export_to_aff_buf(&kp.pub_key, temp_buf, buf_size)) {
-    return ERROR_ENCODING;
-  }
-  if (secp256r1_pub_key_import_from_aff_buf(&context, &pub_key3, temp_buf,
-                                            buf_size)) {
-    return ERROR_ENCODING;
-  }
-  if (secp256r1_verify_signature(&context, test_signature,
-                                 sizeof(test_signature), &pub_key2,
-                                 test_message, sizeof(test_message))) {
-    printf("TESTING with public_key imported from the buffer exported from key "
-           "pair FAILED\n");
-  } else {
-    printf("TESTING with public_key imported from the buffer exported from key "
-           "pair succeeded\n");
-  };
-
-  // pub_key from arguments
-  if (secp256r1_verify_signature(&context, test_signature,
-                                 sizeof(test_signature), &pub_key, test_message,
-                                 sizeof(test_message))) {
-    printf("TESTING with public_key from arguments FAILED\n");
-  } else {
-    printf("TESTING with public_key from arguments succeeded\n");
-  };
-
-  my_pub_key_print("kp.pub_key (public key imported from private key)",
-                   &kp.pub_key);
-  my_pub_key_print("pub_key (public key passed from rust)", &pub_key);
-  my_pub_key_print("pub_key2 (public key imported from fixed buffer)",
-                   &pub_key2);
-  my_pub_key_print(
-      "pub_key3 (public key imported from the buffer exported from key pair)",
-      &pub_key3);
 
   if (secp256r1_verify_signature(&context, lock_bytes, SIGNATURE_SIZE, &pub_key,
                                  message, BLAKE2B_BLOCK_SIZE)) {

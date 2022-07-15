@@ -1,6 +1,5 @@
 use super::{
-    blake160, sign_tx, sign_tx_by_input_group, DummyDataLoader, MAX_CYCLES, SECP256K1_DATA_BIN,
-    SIGHASH_ALL_BIN,
+    blake160, sign_tx, sign_tx_by_input_group, DummyDataLoader, MAX_CYCLES, SIGHASH_ALL_BIN,
 };
 use ckb_chain_spec::consensus::{Consensus, ConsensusBuilder};
 use ckb_crypto::secp::{Generator, Privkey};
@@ -74,38 +73,12 @@ fn gen_tx_with_grouped_args<R: Rng>(
         sighash_all_out_point.clone(),
         (sighash_all_cell, SIGHASH_ALL_BIN.clone()),
     );
-    // setup secp256k1_data dep
-    let secp256k1_data_out_point = {
-        let tx_hash = {
-            let mut buf = [0u8; 32];
-            rng.fill(&mut buf);
-            buf.pack()
-        };
-        OutPoint::new(tx_hash, 0)
-    };
-    let secp256k1_data_cell = CellOutput::new_builder()
-        .capacity(
-            Capacity::bytes(SECP256K1_DATA_BIN.len())
-                .expect("data capacity")
-                .pack(),
-        )
-        .build();
-    dummy.cells.insert(
-        secp256k1_data_out_point.clone(),
-        (secp256k1_data_cell, SECP256K1_DATA_BIN.clone()),
-    );
     // setup default tx builder
     let dummy_capacity = Capacity::shannons(42);
     let mut tx_builder = TransactionBuilder::default()
         .cell_dep(
             CellDep::new_builder()
                 .out_point(sighash_all_out_point)
-                .dep_type(DepType::Code.into())
-                .build(),
-        )
-        .cell_dep(
-            CellDep::new_builder()
-                .out_point(secp256k1_data_out_point)
                 .dep_type(DepType::Code.into())
                 .build(),
         )
@@ -117,7 +90,6 @@ fn gen_tx_with_grouped_args<R: Rng>(
         .output_data(Bytes::new().pack());
 
     for (args, inputs_size) in grouped_args {
-        println!("input args {:x}, size {}", args, inputs_size);
         // setup dummy input unlock script
         for _ in 0..inputs_size {
             let previous_tx_hash = {
@@ -309,7 +281,6 @@ fn test_sighash_all_with_extra_witness_unlock() {
         assert!(verify_result.unwrap_err().to_string().contains(&error));
     }
 }
-
 
 #[test]
 fn test_sighash_all_with_2_different_inputs_unlock() {
