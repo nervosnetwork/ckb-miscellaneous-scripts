@@ -38,7 +38,7 @@ typedef struct {
   /* Test case name */
   const char *name;
 
-  /* Private key */
+  /* Public key */
   const u8 *pub_key;
   u8 pub_key_len;
 
