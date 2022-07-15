@@ -228,6 +228,19 @@ fn get_sample_signing_key() -> SigningKey {
     sk
 }
 
+fn get_random_signing_key<
+    RNG: p256::elliptic_curve::rand_core::CryptoRng + p256::elliptic_curve::rand_core::RngCore,
+>(
+    rng: RNG,
+) -> SigningKey {
+    SigningKey::random(rng)
+}
+
+fn get_random_signing_keys(n: usize) -> Vec<SigningKey> {
+    let rng = p256::elliptic_curve::rand_core::OsRng::default();
+    (0..n).map(|_| get_random_signing_key(rng)).collect()
+}
+
 #[test]
 fn test_sighash_all_unlock() {
     let mut data_loader = DummyDataLoader::new();
@@ -351,19 +364,18 @@ fn test_sighash_all_with_grouped_inputs_unlock() {
 fn test_sighash_all_with_2_different_inputs_unlock() {
     let mut rng = thread_rng();
     let mut data_loader = DummyDataLoader::new();
+    let privkeys = get_random_signing_keys(2);
     // key1
-    let privkey = get_sample_signing_key();
+    let privkey = &privkeys[0];
     let pubkey = privkey.verifying_key();
-    let pubkey_hash = Bytes::copy_from_slice(pubkey.to_encoded_point(true).as_bytes());
     // key2
-    let privkey2 = get_sample_signing_key();
+    let privkey2 = &privkeys[1];
     let pubkey2 = privkey2.verifying_key();
-    let pubkey_hash2 = Bytes::copy_from_slice(pubkey2.to_encoded_point(true).as_bytes());
 
     // sign with 2 keys
     let tx = gen_tx_with_grouped_args(
         &mut data_loader,
-        vec![(pubkey_hash, 2), (pubkey_hash2, 2)],
+        vec![(get_pk_bytes(&pubkey), 2), (get_pk_bytes(&pubkey2), 2)],
         &mut rng,
     );
     let tx = sign_tx_by_input_group(tx, &privkey, 0, 2);
