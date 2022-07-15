@@ -7,7 +7,9 @@ use p256::ecdsa::{
 
 use ckb_traits::{CellDataProvider, HeaderProvider};
 use ckb_types::{
+    bytes::BufMut,
     bytes::Bytes,
+    bytes::BytesMut,
     core::{EpochExt, HeaderView, TransactionView},
     packed::{self, Byte32, CellOutput, OutPoint, WitnessArgs},
     prelude::*,
@@ -16,7 +18,7 @@ use lazy_static::lazy_static;
 use std::collections::HashMap;
 
 pub const MAX_CYCLES: u64 = std::u64::MAX;
-pub const SIGNATURE_SIZE: usize = 64;
+pub const LOCK_WITNESS_SIZE: usize = 128;
 
 lazy_static! {
     pub static ref SIGHASH_ALL_BIN: Bytes =
@@ -77,7 +79,7 @@ pub fn get_blake2_hash_for_input_group(
     let witness = WitnessArgs::new_unchecked(tx.witnesses().get(start_index).unwrap().unpack());
     let zero_lock: Bytes = {
         let mut buf = Vec::new();
-        buf.resize(SIGNATURE_SIZE, 0);
+        buf.resize(LOCK_WITNESS_SIZE, 0);
         buf.into()
     };
     let witness_for_digest = witness
@@ -119,7 +121,7 @@ pub fn sign_tx_by_input_group(
                 let witness = WitnessArgs::new_unchecked(tx.witnesses().get(i).unwrap().unpack());
                 let zero_lock: Bytes = {
                     let mut buf = Vec::new();
-                    buf.resize(SIGNATURE_SIZE, 0);
+                    buf.resize(LOCK_WITNESS_SIZE, 0);
                     buf.into()
                 };
                 let witness_for_digest = witness
@@ -137,10 +139,17 @@ pub fn sign_tx_by_input_group(
                     blake2b.update(&witness.raw_data());
                 });
                 blake2b.finalize(&mut message);
+
+                let pk_point = key.verifying_key().to_encoded_point(false);
+                let pk_bytes = &pk_point.as_bytes()[1..];
+
                 let sig = key.sign(&message);
                 let sig_bytes = sig.as_bytes();
 
-                let bytes = Bytes::copy_from_slice(&sig_bytes);
+                let mut buf = BytesMut::with_capacity(pk_bytes.len() + sig_bytes.len());
+                buf.put(pk_bytes);
+                buf.put(sig_bytes);
+                let bytes = buf.freeze();
 
                 witness
                     .as_builder()

@@ -2,7 +2,6 @@ use super::{
     blake160, sign_tx, sign_tx_by_input_group, DummyDataLoader, MAX_CYCLES, SIGHASH_ALL_BIN,
 };
 use ckb_chain_spec::consensus::{Consensus, ConsensusBuilder};
-use ckb_crypto::secp::{Generator, Privkey};
 use p256::ecdsa::{SigningKey, VerifyingKey};
 
 use ckb_script::{TransactionScriptsVerifier, TxVerifyEnv};
@@ -18,14 +17,13 @@ use ckb_types::{
         Byte32, CellDep, CellInput, CellOutput, OutPoint, Script, WitnessArgs, WitnessArgsBuilder,
     },
     prelude::*,
-    H256,
 };
 use hex_literal::hex;
 use rand::rngs::StdRng;
 use rand::{thread_rng, Rng, SeedableRng};
 
-const ERROR_ENCODING: i8 = -2;
 const ERROR_SECP_VERIFICATION: i8 = -12;
+const ERROR_PUBKEY_BLAKE160_HASH: i8 = -31;
 
 fn debug_printer(script: &Byte32, msg: &str) {
     let slice = script.as_slice();
@@ -37,8 +35,8 @@ fn debug_printer(script: &Byte32, msg: &str) {
     print!("{}", msg);
 }
 
-fn get_pk_bytes(pubkey: &VerifyingKey) -> Bytes {
-    Bytes::copy_from_slice(&pubkey.to_encoded_point(false).as_bytes()[1..])
+fn get_pk_hash(pubkey: &VerifyingKey) -> Bytes {
+    blake160(&pubkey.to_encoded_point(false).as_bytes()[1..])
 }
 
 fn gen_tx(dummy: &mut DummyDataLoader, lock_args: Bytes) -> TransactionView {
@@ -144,22 +142,6 @@ pub fn gen_consensus() -> Consensus {
         .build()
 }
 
-fn sign_tx_hash(tx: TransactionView, key: &Privkey, tx_hash: &[u8]) -> TransactionView {
-    // calculate message
-    let mut blake2b = ckb_hash::new_blake2b();
-    let mut message = [0u8; 32];
-    blake2b.update(tx_hash);
-    blake2b.finalize(&mut message);
-    let message = H256::from(message);
-    let sig = key.sign_recoverable(&message).expect("sign");
-    let witness_args = WitnessArgsBuilder::default()
-        .lock(Some(Bytes::from(sig.serialize())).pack())
-        .build();
-    tx.as_advanced_builder()
-        .set_witnesses(vec![witness_args.as_bytes().pack()])
-        .build()
-}
-
 fn build_resolved_tx(data_loader: &DummyDataLoader, tx: &TransactionView) -> ResolvedTransaction {
     let resolved_cell_deps = tx
         .cell_deps()
@@ -216,7 +198,7 @@ fn test_sighash_all_unlock() {
     let mut data_loader = DummyDataLoader::new();
     let privkey = get_sample_signing_key();
     let pubkey = privkey.verifying_key();
-    let tx = gen_tx(&mut data_loader, get_pk_bytes(&pubkey));
+    let tx = gen_tx(&mut data_loader, get_pk_hash(&pubkey));
     let tx = sign_tx(tx, &privkey);
     let resolved_tx = build_resolved_tx(&data_loader, &tx);
     let consensus = gen_consensus();
@@ -233,7 +215,7 @@ fn test_sighash_all_with_extra_witness_unlock() {
     let mut data_loader = DummyDataLoader::new();
     let privkey = get_sample_signing_key();
     let pubkey = privkey.verifying_key();
-    let tx = gen_tx(&mut data_loader, get_pk_bytes(&pubkey));
+    let tx = gen_tx(&mut data_loader, get_pk_hash(&pubkey));
     let extract_witness = vec![1, 2, 3, 4];
     let tx = tx
         .as_advanced_builder()
@@ -297,7 +279,7 @@ fn test_sighash_all_with_2_different_inputs_unlock() {
     // sign with 2 keys
     let tx = gen_tx_with_grouped_args(
         &mut data_loader,
-        vec![(get_pk_bytes(&pubkey), 2), (get_pk_bytes(&pubkey2), 2)],
+        vec![(get_pk_hash(&pubkey), 2), (get_pk_hash(&pubkey2), 2)],
         &mut rng,
     );
     let tx = sign_tx_by_input_group(tx, &privkey, 0, 2);
@@ -317,7 +299,7 @@ fn test_signing_with_wrong_key() {
     let mut data_loader = DummyDataLoader::new();
     let privkey = get_sample_signing_key();
     let pubkey = privkey.verifying_key();
-    let tx = gen_tx(&mut data_loader, get_pk_bytes(&pubkey));
+    let tx = gen_tx(&mut data_loader, get_pk_hash(&pubkey));
     let wrong_privkey = SigningKey::from_bytes(&hex!(
         "c9afa9d845ba75166b5c215767b1d6934e50c3db36e89b127b8a622b120f6722"
     ))
@@ -330,66 +312,6 @@ fn test_signing_with_wrong_key() {
         TransactionScriptsVerifier::new(&resolved_tx, &consensus, &data_loader, &tx_env)
             .verify(MAX_CYCLES);
     assert!(verify_result.is_err());
-    let error = format!("error code {}", ERROR_SECP_VERIFICATION);
-    assert!(verify_result.unwrap_err().to_string().contains(&error));
-}
-
-#[test]
-fn test_signing_wrong_tx_hash() {
-    let mut data_loader = DummyDataLoader::new();
-    let privkey = Generator::random_privkey();
-    let pubkey = privkey.pubkey().expect("pubkey");
-    let pubkey_hash = blake160(&pubkey.serialize());
-    let tx = gen_tx(&mut data_loader, pubkey_hash);
-    let tx = {
-        let mut rand_tx_hash = [0u8; 32];
-        let mut rng = thread_rng();
-        rng.fill(&mut rand_tx_hash);
-        sign_tx_hash(tx, &privkey, &rand_tx_hash[..])
-    };
-    let resolved_tx = build_resolved_tx(&data_loader, &tx);
-    let consensus = gen_consensus();
-    let tx_env = gen_tx_env();
-    let verify_result =
-        TransactionScriptsVerifier::new(&resolved_tx, &consensus, &data_loader, &tx_env)
-            .verify(MAX_CYCLES);
-    assert!(verify_result.is_err());
-    let error = format!("error code {}", ERROR_ENCODING);
-    dbg!(&verify_result.clone().unwrap_err().to_string());
-    assert!(verify_result.unwrap_err().to_string().contains(&error));
-}
-
-#[test]
-fn test_sighash_all_witness_append_junk_data() {
-    let mut rng = thread_rng();
-    let mut data_loader = DummyDataLoader::new();
-    let privkey = get_sample_signing_key();
-    let pubkey = privkey.verifying_key();
-    let pubkey_hash = Bytes::copy_from_slice(pubkey.to_encoded_point(true).as_bytes());
-
-    // sign with 2 keys
-    let tx = gen_tx_with_grouped_args(&mut data_loader, vec![(pubkey_hash, 2)], &mut rng);
-    let tx = sign_tx_by_input_group(tx, &privkey, 0, 2);
-    let mut witnesses: Vec<_> = Unpack::<Vec<_>>::unpack(&tx.witnesses());
-    // append junk data to first witness
-    let mut witness = Vec::new();
-    witness.resize(witnesses[0].len(), 0);
-    witness.copy_from_slice(&witnesses[0]);
-    witness.push(0);
-    witnesses[0] = witness.into();
-
-    let tx = tx
-        .as_advanced_builder()
-        .set_witnesses(witnesses.into_iter().map(|w| w.pack()).collect())
-        .build();
-
-    let resolved_tx = build_resolved_tx(&data_loader, &tx);
-    let consensus = gen_consensus();
-    let tx_env = gen_tx_env();
-    let verify_result =
-        TransactionScriptsVerifier::new(&resolved_tx, &consensus, &data_loader, &tx_env)
-            .verify(MAX_CYCLES);
-    assert!(verify_result.is_err());
-    let error = format!("error code {}", ERROR_ENCODING);
+    let error = format!("error code {}", ERROR_PUBKEY_BLAKE160_HASH);
     assert!(verify_result.unwrap_err().to_string().contains(&error));
 }

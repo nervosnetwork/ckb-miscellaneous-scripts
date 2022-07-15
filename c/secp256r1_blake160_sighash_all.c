@@ -125,11 +125,6 @@ int main() {
   if (secp256r1_context_init(&context)) {
     return ERROR_SYSCALL;
   }
-  ec_pub_key pub_key;
-  if (secp256r1_pub_key_import_from_aff_buf(
-          &context, &pub_key, args_bytes_seg.ptr, args_bytes_seg.size)) {
-    return ERROR_ENCODING;
-  }
 
   // Load the first witness, or the witness of the same index as the first
   // input using current script.
@@ -153,12 +148,28 @@ int main() {
 
   // The lock field must be 65 byte long to represent a (possibly) valid
   // signature.
-  if (lock_bytes_seg.size != SIGNATURE_SIZE) {
+  if (lock_bytes_seg.size != LOCK_SIZE) {
     return ERROR_ARGUMENTS_LEN;
   }
   // We keep the signature in the temporary location, since later we will modify
   // the WitnessArgs object in place for message hashing.
   memcpy(lock_bytes, lock_bytes_seg.ptr, lock_bytes_seg.size);
+
+  ec_pub_key pub_key;
+  if (secp256r1_pub_key_import_from_aff_buf(&context, &pub_key, lock_bytes,
+                                            PUBKEY_SIZE)) {
+    return ERROR_ENCODING;
+  }
+
+  blake2b_state blake2b_ctx_pk;
+  unsigned char hash_result[BLAKE2B_BLOCK_SIZE];
+  blake2b_init(&blake2b_ctx_pk, BLAKE2B_BLOCK_SIZE);
+  blake2b_update(&blake2b_ctx_pk, lock_bytes, PUBKEY_SIZE);
+  blake2b_final(&blake2b_ctx_pk, hash_result, BLAKE2B_BLOCK_SIZE);
+
+  if (memcmp(args_bytes_seg.ptr, hash_result, BLAKE160_SIZE) != 0) {
+    return ERROR_PUBKEY_BLAKE160_HASH;
+  }
 
   // Load the current transaction hash.
   unsigned char tx_hash[BLAKE2B_BLOCK_SIZE];
@@ -245,8 +256,9 @@ int main() {
   // Now the message preparation is completed.
   blake2b_final(&blake2b_ctx, message, BLAKE2B_BLOCK_SIZE);
 
-  if (secp256r1_verify_signature(&context, lock_bytes, SIGNATURE_SIZE, &pub_key,
-                                 message, BLAKE2B_BLOCK_SIZE)) {
+  if (secp256r1_verify_signature(&context, lock_bytes + PUBKEY_SIZE,
+                                 SIGNATURE_SIZE, &pub_key, message,
+                                 BLAKE2B_BLOCK_SIZE)) {
     return ERROR_SECP_VERIFICATION;
   };
 
