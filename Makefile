@@ -59,7 +59,7 @@ build/secp256r1_blake160_sighash_all: c/secp256r1_blake160_sighash_all.c ${PROTO
 	$(OBJCOPY) --only-keep-debug $@ $@.debug
 	$(OBJCOPY) --strip-debug --strip-all $@
 
-build/secp256r1_blake160_test: c/secp256r1_blake160_test.c deps/libecc/build/libarith.a deps/libecc/build/libec.a deps/libecc/build/libsign.a
+build/libecc_test: c/libecc_test.c deps/libecc/build/libarith.a deps/libecc/build/libec.a deps/libecc/build/libsign.a
 	$(CC) -fno-builtin-printf $(CFLAGS) $(CFLAGS_LINK_TO_LIBECC) $(LDFLAGS) -o $@ $^
 	$(OBJCOPY) --only-keep-debug $@ $@.debug
 	$(OBJCOPY) --strip-debug --strip-all $@
@@ -194,7 +194,7 @@ clean:
 	rm -rf build/*.debug
 	rm -rf build/or
 	rm -rf build/simple_udt build/secp256k1_blake2b_sighash_all_dual build/and
-	rm -rf build/secp256r1_blake160_test* build/secp256r1_blake160_sighash_all
+	rm -rf build/libecc_test* build/secp256r1_blake160_sighash_all
 	make -C deps/secp256k1 clean || true
 	make -C deps/mbedtls/library clean
 	make -C deps/libecc clean
