@@ -67,7 +67,12 @@ fn main() {
         for (name, expected, actual) in errors.into_iter() {
             eprintln!("{}: expect {}, actual {}", name, expected, actual);
         }
-        // panic!("not all hashes are right");
+        match std::env::var("PROFILE").as_deref() {
+            Ok("release") => {
+                panic!("not all hashes are right")
+            }
+            _ => (),
+        }
     }
 
     bundled.build("bundled.rs").expect("build resource bundle");
