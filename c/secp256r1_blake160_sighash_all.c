@@ -55,7 +55,7 @@
 #include "blake2b.h"
 #include "ckb_syscalls.h"
 #include "common.h"
-#include "protocol.h"
+#include "blockchain.h"
 
 #include "secp256r1_helper.h"
 

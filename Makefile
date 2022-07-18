@@ -20,11 +20,6 @@ CFLAGS_LINK_TO_LIBECC := -DWORDSIZE=64 -DWITH_STDLIB -DWITH_BLANK_EXTERNAL_DEPEN
 MOLC := moleculec
 MOLC_VERSION := 0.7.0
 
-PROTOCOL_HEADER := c/protocol.h
-PROTOCOL_SCHEMA := c/blockchain.mol
-PROTOCOL_VERSION := d75e4c56ffa40e17fd2fe477da3f98c5578edcd1
-PROTOCOL_URL := https://raw.githubusercontent.com/nervosnetwork/ckb/${PROTOCOL_VERSION}/util/types/schemas/blockchain.mol
-
 CURRENT_DIR := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
 DOCKER_USER := $(shell id -u):$(shell id -g)
 # docker pull nervos/ckb-riscv-gnu-toolchain:gnu-bionic-20191012
@@ -32,18 +27,10 @@ BUILDER_DOCKER := nervos/ckb-riscv-gnu-toolchain@sha256:aae8a3f79705f67d505d1f1d
 
 all: build/htlc build/secp256k1_blake2b_sighash_all_lib.so build/or build/simple_udt build/secp256k1_blake2b_sighash_all_dual build/and build/open_transaction build/rsa_sighash_all blst-demo deps/libecc build/secp256r1_blake160_sighash_all
 
-generate-protocol: ${PROTOCOL_HEADER}
-
-${PROTOCOL_HEADER}: ${PROTOCOL_SCHEMA}
-	${MOLC} --language c --schema-file $< > $@
-
-${PROTOCOL_SCHEMA}:
-	curl -L -o $@ ${PROTOCOL_URL}
-
-docker-interactive: ${PROTOCOL_HEADER}
+docker-interactive:
 	docker run --user ${DOCKER_USER} --rm -it -v "${CURRENT_DIR}:/code" --workdir /code --entrypoint /bin/bash ${BUILDER_DOCKER}
 
-all-via-docker: ${PROTOCOL_HEADER}
+all-via-docker:
 	docker run --user ${DOCKER_USER} --rm -v `pwd`:/code ${BUILDER_DOCKER} bash -c "cd /code && make"
 
 build/htlc: c/htlc.c build/secp256k1_blake2b_sighash_all_lib.h
@@ -54,7 +41,7 @@ build/htlc: c/htlc.c build/secp256k1_blake2b_sighash_all_lib.h
 build/secp256k1_blake2b_sighash_all_lib.h: build/generate_data_hash build/secp256k1_blake2b_sighash_all_lib.so
 	$< build/secp256k1_blake2b_sighash_all_lib.so secp256k1_blake2b_sighash_all_data_hash > $@
 
-build/secp256r1_blake160_sighash_all: c/secp256r1_blake160_sighash_all.c ${PROTOCOL_HEADER} c/common.h c/utils.h c/secp256r1_helper.h deps/libecc/build/libarith.a deps/libecc/build/libec.a deps/libecc/build/libsign.a
+build/secp256r1_blake160_sighash_all: c/secp256r1_blake160_sighash_all.c c/common.h c/utils.h c/secp256r1_helper.h deps/libecc/build/libarith.a deps/libecc/build/libec.a deps/libecc/build/libsign.a
 	$(CC) $(CFLAGS) $(CFLAGS_LINK_TO_LIBECC) $(LDFLAGS) -o $@ $< deps/libecc/build/libarith.a deps/libecc/build/libec.a deps/libecc/build/libsign.a
 	$(OBJCOPY) --only-keep-debug $@ $@.debug
 	$(OBJCOPY) --strip-debug --strip-all $@

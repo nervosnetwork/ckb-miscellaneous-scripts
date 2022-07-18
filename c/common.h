@@ -5,7 +5,7 @@ Defines commonly used high level functions and constants.
 */
 
 #include "ckb_syscalls.h"
-#include "protocol.h"
+#include "blockchain.h"
 #include "utils.h"
 
 /* Common errors */
