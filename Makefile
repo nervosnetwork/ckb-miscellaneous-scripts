@@ -44,6 +44,11 @@ build/htlc: c/htlc.c build/secp256k1_blake2b_sighash_all_lib.h
 build/secp256k1_blake2b_sighash_all_lib.h: build/generate_data_hash build/secp256k1_blake2b_sighash_all_lib.so
 	$< build/secp256k1_blake2b_sighash_all_lib.so secp256k1_blake2b_sighash_all_data_hash > $@
 
+build/secp256r1_blake160_sighash_bench: c/secp256r1_blake160_sighash_bench.c c/common.h c/secp256r1_helper.h libecc
+	$(CC) $(CFLAGS) $(CFLAGS_LINK_TO_LIBECC) $(LDFLAGS) -o $@ $< ${LIBECC_FILES}
+	$(OBJCOPY) --only-keep-debug $@ $@.debug
+	$(OBJCOPY) --strip-debug --strip-all $@
+
 build/secp256r1_blake160_sighash_all: c/secp256r1_blake160_sighash_all.c c/common.h c/secp256r1_helper.h libecc
 	$(CC) $(CFLAGS) $(CFLAGS_LINK_TO_LIBECC) $(LDFLAGS) -o $@ c/secp256r1_blake160_sighash_all.c c/common.h c/secp256r1_helper.h ${LIBECC_FILES}
 	$(OBJCOPY) --only-keep-debug $@ $@.debug
