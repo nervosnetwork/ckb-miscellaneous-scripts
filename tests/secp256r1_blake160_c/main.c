@@ -306,7 +306,7 @@ ec_sig_known_vector_tests_one(const ec_test_case *c) {
 
 err:
   if (ret) {
-    ext_printf("%s failed: ret %d", __func__, ret);
+    ext_printf("%s failed: ret %d\n", __func__, ret);
   }
   return ret;
 }
