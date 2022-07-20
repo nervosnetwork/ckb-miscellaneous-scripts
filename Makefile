@@ -1,3 +1,4 @@
+CURRENT_DIR := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
 TARGET ?= riscv64-unknown-linux-gnu
 TARGET_PREFIX ?= $(TARGET)-
 CC := $(TARGET_PREFIX)gcc
@@ -14,21 +15,23 @@ PASSED_MBEDTLS_CFLAGS := -Os -fPIC -nostdinc -nostdlib -DCKB_DECLARATION_ONLY -I
 CFLAGS_BLST := -fno-builtin-printf -Ideps/blst/bindings $(subst ckb-c-stdlib,ckb-c-stdlib-202106,$(CFLAGS))
 CKB_VM_CLI := ckb-vm-b-cli
 
-CFLAGS_LIBECC := -DWORDSIZE=64 -DWITH_STDLIB -DWITH_BLANK_EXTERNAL_DEPENDENCIES -fPIC
-CFLAGS_LINK_TO_LIBECC := -DWORDSIZE=64 -DWITH_STDLIB -DWITH_BLANK_EXTERNAL_DEPENDENCIES -fno-builtin-printf -I deps/libecc/src -I deps/libecc/src/external_deps
+LIBECC_PATH := deps/libecc
+CFLAGS_LIBECC := -DWORDSIZE=64 -DWITH_STDLIB -DWITH_BLANK_EXTERNAL_DEPENDENCIES -fPIC -g
+CFLAGS_LINK_TO_LIBECC := -DWORDSIZE=64 -DWITH_STDLIB -DWITH_BLANK_EXTERNAL_DEPENDENCIES -fno-builtin-printf -I ${LIBECC_PATH}/src -I ${LIBECC_PATH}/src/external_deps
+LIBECC_FILES := ${LIBECC_PATH}/build/libarith.a ${LIBECC_PATH}/build/libec.a ${LIBECC_PATH}/build/libsign.a
 
 MOLC := moleculec
 MOLC_VERSION := 0.7.0
 
-CURRENT_DIR := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
 DOCKER_USER := $(shell id -u):$(shell id -g)
+DOCKER_EXTRA_FLAGS ?=
 # docker pull nervos/ckb-riscv-gnu-toolchain:gnu-bionic-20191012
 BUILDER_DOCKER := nervos/ckb-riscv-gnu-toolchain@sha256:aae8a3f79705f67d505d1f1d5ddc694a4fd537ed1c7e9622420a470d59ba2ec3
 
 all: build/htlc build/secp256k1_blake2b_sighash_all_lib.so build/or build/simple_udt build/secp256k1_blake2b_sighash_all_dual build/and build/open_transaction build/rsa_sighash_all blst-demo deps/libecc build/secp256r1_blake160_sighash_all build/secp256r1_blake160_c
 
 docker-interactive:
-	docker run --user ${DOCKER_USER} --rm -it -v "${CURRENT_DIR}:/code" --workdir /code --entrypoint /bin/bash ${BUILDER_DOCKER}
+	docker run --user ${DOCKER_USER} --rm -it -v "${CURRENT_DIR}:/code" --workdir /code --entrypoint /bin/bash ${DOCKER_EXTRA_FLAGS} ${BUILDER_DOCKER}
 
 all-via-docker:
 	docker run --user ${DOCKER_USER} --rm -v `pwd`:/code ${BUILDER_DOCKER} bash -c "cd /code && make"
@@ -41,15 +44,15 @@ build/htlc: c/htlc.c build/secp256k1_blake2b_sighash_all_lib.h
 build/secp256k1_blake2b_sighash_all_lib.h: build/generate_data_hash build/secp256k1_blake2b_sighash_all_lib.so
 	$< build/secp256k1_blake2b_sighash_all_lib.so secp256k1_blake2b_sighash_all_data_hash > $@
 
-build/secp256r1_blake160_sighash_all: c/secp256r1_blake160_sighash_all.c c/common.h c/utils.h c/secp256r1_helper.h deps/libecc/build/libarith.a deps/libecc/build/libec.a deps/libecc/build/libsign.a
-	$(CC) $(CFLAGS) $(CFLAGS_LINK_TO_LIBECC) $(LDFLAGS) -o $@ $< deps/libecc/build/libarith.a deps/libecc/build/libec.a deps/libecc/build/libsign.a
+build/secp256r1_blake160_sighash_all: c/secp256r1_blake160_sighash_all.c c/common.h c/secp256r1_helper.h libecc
+	$(CC) $(CFLAGS) $(CFLAGS_LINK_TO_LIBECC) $(LDFLAGS) -o $@ c/secp256r1_blake160_sighash_all.c c/common.h c/secp256r1_helper.h ${LIBECC_FILES}
 	$(OBJCOPY) --only-keep-debug $@ $@.debug
-	$(OBJCOPY) --strip-debug --strip-all $@
+	$(OBJCOPY) --strip-debug --strip-all $@ $@.stripped
 
-build/secp256r1_blake160_c: tests/secp256r1_blake160_c/main.c deps/libecc/build/libarith.a deps/libecc/build/libec.a deps/libecc/build/libsign.a
-	$(CC) $(CFLAGS) $(CFLAGS_LINK_TO_LIBECC) $(LDFLAGS) -o $@ $^
+build/secp256r1_blake160_c: tests/secp256r1_blake160_c/main.c libecc
+	$(CC) $(CFLAGS) $(CFLAGS_LINK_TO_LIBECC) $(LDFLAGS) -o $@ $< ${LIBECC_FILES}
 	$(OBJCOPY) --only-keep-debug $@ $@.debug
-	$(OBJCOPY) --strip-debug --strip-all $@
+	$(OBJCOPY) --strip-debug --strip-all $@ $@.stripped
 
 build/secp256k1_blake2b_sighash_all_dual: c/secp256k1_blake2b_sighash_all_dual.c build/secp256k1_data_info.h
 	$(CC) $(CFLAGS) $(LDFLAGS) -fPIC -fPIE -pie -Wl,--dynamic-list c/dual.syms -o $@ $<
@@ -90,10 +93,8 @@ build/simple_udt: c/simple_udt.c
 	$(OBJCOPY) --only-keep-debug $@ $@.debug
 	$(OBJCOPY) --strip-debug --strip-all $@
 
-deps/libecc: deps/libecc/build/libarith.a deps/libecc/build/libec.a deps/libecc/build/libsign.a
-
-deps/libecc/build/libarith.a deps/libecc/build/libec.a deps/libecc/build/libsign.a:
-	make -C deps/libecc CC=${CC} LD=${LD} CFLAGS="$(CFLAGS_LIBECC)"
+libecc:
+	make -C ${LIBECC_PATH} CC=${CC} LD=${LD} CFLAGS="$(CFLAGS_LIBECC)"
 
 deps/mbedtls/library/libmbedcrypto.a:
 	cp deps/mbedtls-config-template.h deps/mbedtls/include/mbedtls/config.h
@@ -181,13 +182,13 @@ clean:
 	rm -rf build/*.debug
 	rm -rf build/or
 	rm -rf build/simple_udt build/secp256k1_blake2b_sighash_all_dual build/and
-	rm -rf build/secp256r1_blake160_c* build/secp256r1_blake160_sighash_all
+	rm -rf build/secp256r1_blake160_c* build/secp256r1_blake160_sighash_*
 	make -C deps/secp256k1 clean || true
 	make -C deps/mbedtls/library clean
-	make -C deps/libecc clean
+	make -C ${LIBECC_PATH} clean
 	rm -f build/rsa_sighash_all
 	rm -f build/blst* build/server.o build/server-asm.o
 
 dist: clean all
 
-.PHONY: all all-via-docker dist clean fmt
+.PHONY: all all-via-docker dist clean fmt libecc

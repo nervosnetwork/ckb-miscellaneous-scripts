@@ -6,7 +6,6 @@ Defines commonly used high level functions and constants.
 
 #include "ckb_syscalls.h"
 #include "blockchain.h"
-#include "utils.h"
 
 /* Common errors */
 #define ERROR_ARGUMENTS_LEN -1
