@@ -49,6 +49,11 @@ build/secp256r1_blake160_sighash_bench: c/secp256r1_blake160_sighash_bench.c c/c
 	$(OBJCOPY) --only-keep-debug $@ $@.debug
 	$(OBJCOPY) --strip-debug --strip-all $@
 
+build/secp256r1_blake160_sighash_lay2dev_bench: c/secp256r1_blake160_sighash_bench.c libecc
+	$(CC) $(CFLAGS) $(CFLAGS_LINK_TO_LIBECC) $(LDFLAGS) -o $@ c/secp256r1_blake160_sighash_lay2dev_bench.c ${LIBECC_FILES}
+	$(OBJCOPY) --only-keep-debug $@ $@.debug
+	$(OBJCOPY) --strip-debug --strip-all $@ $@.stripped
+
 build/secp256r1_blake160_sighash_all: c/secp256r1_blake160_sighash_all.c c/common.h c/secp256r1_helper.h libecc
 	$(CC) $(CFLAGS) $(CFLAGS_LINK_TO_LIBECC) $(LDFLAGS) -o $@ c/secp256r1_blake160_sighash_all.c c/common.h c/secp256r1_helper.h ${LIBECC_FILES}
 	$(OBJCOPY) --only-keep-debug $@ $@.debug
