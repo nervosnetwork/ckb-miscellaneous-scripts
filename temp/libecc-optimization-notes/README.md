@@ -48,3 +48,52 @@ nn_mul_redc1: 0 %
 nn_zero: 0 %
 nn_mod_add: 0 %
 ```
+# low hanging fruits
+Inspecting hot functions in `folder.py`, we can fetch some low hanging fruits.
+
+## end result
+The libecc commit is [76fd62031ad9f0500725389dae94ef0550af5417](https://github.com/contrun/libecc/tree/76fd62031ad9f0500725389dae94ef0550af5417).
+```
+Run result: 0
+Total cycles consumed: 22577333(21.5M)
+Transfer cycles: 12692(12.4K), running cycles: 22564641(21.5M)
+total cycles: 21.5 M
+_nn_mul_redc1: 31 %
+memset: 16 %
+nn_cmp: 8 %
+nn_cnd_sub: 7 %
+nn_set_wlen: 7 %
+nn_cnd_add: 4 %
+nn_bitlen: 3 %
+memcpy: 2 %
+nn_init: 2 %
+nn_rshift_fixedlen: 1 %
+nn_check_initialized: 0 %
+nn_mod_sub: 0 %
+fp_mul_redc1: 0 %
+fp_init: 0 %
+nn_uninit: 0 %
+nn_mul_redc1: 0 %
+nn_copy: 0 %
+nn_mod_add: 0 %
+_nn_divrem_normalized: 0 %
+nn_modinv_odd: 0 %
+nn_cnd_swap: 0 %
+memmove: 0 %
+fp_sub: 0 %
+fp_copy: 0 %
+fp_add: 0 %
+nn_isodd: 0 %
+fp_uninit: 0 %
+nn_clz: 0 %
+fp_check_initialized: 0 %
+
+## short-circuiting some hot code
+
+There are a few hot functions which are short-circuitable. We can return fast in
+nn_set_wlen and nn_cnd_swap without doing expensive calculation.
+
+## turning off some checks
+Some safety checks seem to be unnecessary for signature verification. We turn off `nn_check_initialized`/`fp_check_initialized`,
+as we are sure all `nn`/`fp` are initialized. We also `__attribute__((always_inline)) inline` for even lower overhead
+(with minimal intrusion to original code base).
