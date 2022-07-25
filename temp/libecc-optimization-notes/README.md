@@ -87,6 +87,7 @@ nn_isodd: 0 %
 fp_uninit: 0 %
 nn_clz: 0 %
 fp_check_initialized: 0 %
+```
 
 ## short-circuiting some hot code
 
@@ -97,3 +98,58 @@ nn_set_wlen and nn_cnd_swap without doing expensive calculation.
 Some safety checks seem to be unnecessary for signature verification. We turn off `nn_check_initialized`/`fp_check_initialized`,
 as we are sure all `nn`/`fp` are initialized. We also `__attribute__((always_inline)) inline` for even lower overhead
 (with minimal intrusion to original code base).
+
+# disable builtins
+
+The overhead of `memset` (16%) is quite large. The callers of `memset` are mostly `nn_init`. Strangely, we don't call `memset` ourself from `nn_init`.
+We use `gdb -batch -ex "file ./build/secp256r1_blake160_sighash_lay2dev_bench" -ex 'disassemble nn_init'` to dump the disassembly code of `nn_init`. We see `nn_init` indeed called `memset`.
+
+```
+Dump of assembler code for function nn_init:
+   0x0000000000010992 <+0>:     beqz    a0,0x1099c <nn_init+10>
+   0x0000000000010994 <+2>:     li      a3,96
+   0x0000000000010998 <+6>:     bgeu    a3,a1,0x1099e <nn_init+12>
+   0x000000000001099c <+10>:    j       0x1099c <nn_init+10>
+   0x000000000001099e <+12>:    addiw   a5,a1,7
+   0x00000000000109a2 <+16>:    sraiw   a5,a5,0x3
+   0x00000000000109a6 <+20>:    sb      a5,104(a0)
+   0x00000000000109aa <+24>:    auipc   a5,0xb
+   0x00000000000109ae <+28>:    ld      a5,1566(a5) # 0x1bfc8
+   0x00000000000109b2 <+32>:    sd      a5,96(a0)
+   0x00000000000109b4 <+34>:    li      a2,96
+   0x00000000000109b8 <+38>:    li      a1,0
+   0x00000000000109ba <+40>:    j       0x1022e <memset>
+End of assembler dump.
+```
+
+How so? Further investigation shows it is gcc that automatically inserts memset (see [this comment](https://github.com/riscv-collab/riscv-gnu-toolchain/issues/758#issuecomment-720175645)) into the generated code.
+We tried to build the binary without gcc builtins by specifying the flag `-fno-builtin`. The end result is
+
+```
+Run result: 0
+Total cycles consumed: 18897592(18.0M)
+Transfer cycles: 12536(12.2K), running cycles: 18885056(18.0M)
+total cycles: 18.0 M
+_nn_mul_redc1: 38 %
+nn_cmp: 9 %
+nn_cnd_sub: 8 %
+nn_set_wlen: 8 %
+nn_cnd_add: 5 %
+nn_init: 5 %
+nn_bitlen: 4 %
+nn_rshift_fixedlen: 1 %
+nn_copy: 1 %
+nn_check_initialized: 1 %
+nn_mod_sub: 1 %
+fp_mul_redc1: 1 %
+fp_init: 0 %
+nn_uninit: 0 %
+nn_mul_redc1: 0 %
+nn_mod_add: 0 %
+_nn_divrem_normalized: 0 %
+nn_modinv_odd: 0 %
+nn_cnd_swap: 0 %
+fp_sub: 0 %
+fp_copy: 0 %
+fp_add: 0 %
+```
