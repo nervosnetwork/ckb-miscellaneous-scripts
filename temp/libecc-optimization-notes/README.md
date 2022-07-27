@@ -153,3 +153,31 @@ fp_sub: 0 %
 fp_copy: 0 %
 fp_add: 0 %
 ```
+
+# use gcc extension for word_mul
+The function with prevailing costs is `_nn_mul_redc1`. This function used naive hand-written code to compute the product of two word.
+Gcc provides a type `__int128` for 128 bit integers. We can directly compute the product of two 64 bit integers
+as in this example `unsigned __int128 t = (unsigned __int128)0xffffffffffffffff * 3`.
+Using [this commit](https://github.com/contrun/libecc/commit/476a03d629175f059f6b0e7cd08433555bccccfb), we obtained
+
+```
+Run result: 0
+Total cycles consumed: 15936199(15.2M)
+Transfer cycles: 12496(12.2K), running cycles: 15923703(15.2M)
+total cycles: 15.2 M
+_nn_mul_redc1: 26 %
+nn_cmp: 11 %
+nn_cnd_sub: 10 %
+nn_set_wlen: 9 %
+nn_cnd_add: 6 %
+nn_init: 6 %
+nn_bitlen: 4 %
+nn_rshift_fixedlen: 1 %
+nn_copy: 1 %
+nn_check_initialized: 1 %
+nn_mod_sub: 1 %
+fp_mul_redc1: 1 %
+fp_init: 1 %
+nn_uninit: 1 %
+nn_mul_redc1: 0 %
+```
