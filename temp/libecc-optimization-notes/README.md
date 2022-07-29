@@ -181,3 +181,20 @@ fp_init: 1 %
 nn_uninit: 1 %
 nn_mul_redc1: 0 %
 ```
+
+# replace montgomery multiplication implementation
+
+With `ckb-debugger --bin build/ll_u256_mont_mul`, we have
+
+```
+Run result: 0
+Total cycles consumed: 5165491(4.9M)
+Transfer cycles: 1796(1.8K), running cycles: 5163695(4.9M)
+```
+
+With `ckb-debugger --bin build/libecc_nn_mul_redc1`, we have
+```
+Run result: 0
+Total cycles consumed: 18112888(17.3M)
+Transfer cycles: 6522(6.4K), running cycles: 18106366(17.3M)
+```

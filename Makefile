@@ -54,6 +54,15 @@ build/libecc_nn_mul_redc1: c/libecc_nn_mul_redc1.c c/common.h c/secp256r1_helper
 	$(OBJCOPY) --only-keep-debug $@ $@.debug
 	$(OBJCOPY) --strip-debug --strip-all $@
 
+build/ll_u256_mont-riscv64.o: c/ll_u256_mont-riscv64.S
+	$(CC) -c -DCKB_DECLARATION_ONLY $(CFLAGS) -o $@ $<
+
+build/ll_u256_mont_mul.o: c/ll_u256_mont_mul.c
+	$(CC) -c -fno-builtin-printf -fno-builtin-memcmp $(CFLAGS) -o $@ $<
+
+build/ll_u256_mont_mul: build/ll_u256_mont-riscv64.o build/ll_u256_mont_mul.o
+	$(CC) -fno-builtin-printf -fno-builtin-memcmp $(CFLAGS) $(LDFLAGS) -o $@ $^
+
 build/secp256r1_blake160_sighash_lay2dev_bench: c/secp256r1_blake160_sighash_bench.c libecc
 	$(CC) $(CFLAGS) $(CFLAGS_LINK_TO_LIBECC) $(LDFLAGS) -o $@ c/secp256r1_blake160_sighash_lay2dev_bench.c ${LIBECC_FILES}
 	$(OBJCOPY) --only-keep-debug $@ $@.debug
@@ -203,6 +212,7 @@ clean:
 	make -C ${LIBECC_PATH} clean
 	rm -f build/rsa_sighash_all
 	rm -f build/blst* build/server.o build/server-asm.o
+	rm -f build/ll_u256_mont*
 
 dist: clean all
 
