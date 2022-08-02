@@ -48,7 +48,7 @@ nn_mul_redc1: 0 %
 nn_zero: 0 %
 nn_mod_add: 0 %
 ```
-# low hanging fruits
+# taking low hanging fruits
 Inspecting hot functions in `folder.py`, we can fetch some low hanging fruits.
 
 ## end result
@@ -99,7 +99,7 @@ Some safety checks seem to be unnecessary for signature verification. We turn of
 as we are sure all `nn`/`fp` are initialized. We also `__attribute__((always_inline)) inline` for even lower overhead
 (with minimal intrusion to original code base).
 
-# disable builtins
+# disabling builtins
 
 The overhead of `memset` (16%) is quite large. The callers of `memset` are mostly `nn_init`. Strangely, we don't call `memset` ourself from `nn_init`.
 We use `gdb -batch -ex "file ./build/secp256r1_blake160_sighash_lay2dev_bench" -ex 'disassemble nn_init'` to dump the disassembly code of `nn_init`. We see `nn_init` indeed called `memset`.
@@ -154,7 +154,7 @@ fp_copy: 0 %
 fp_add: 0 %
 ```
 
-# use gcc extension for word_mul
+# using gcc extension for word_mul
 The function with prevailing costs is `_nn_mul_redc1`. This function used naive hand-written code to compute the product of two word.
 Gcc provides a type `__int128` for 128 bit integers. We can directly compute the product of two 64 bit integers
 as in this example `unsigned __int128 t = (unsigned __int128)0xffffffffffffffff * 3`.
@@ -182,9 +182,12 @@ nn_uninit: 1 %
 nn_mul_redc1: 0 %
 ```
 
-# replace montgomery multiplication implementation
+# replacing Montgomery multiplication implementation
 
-With `ckb-debugger --bin build/ll_u256_mont_mul`, we have
+## benchmarking Montgomery multiplication implementations
+With `ckb-debugger --bin build/ll_u256_mont_mul` (where [`build/ll_u256_mont_mul`](https://github.com/contrun/ckb-miscellaneous-scripts/blob/secp256r1_blake160_optiomization/c/ll_u256_mont_mul.c) is a simple program to benchmark
+[the Montgomery mulitplication algorithm from piggypiggy/fp256](https://github.com/piggypiggy/fp256/blob/master/src/ll/riscv64/ll_u256_mont-riscv64.S)),
+we have
 
 ```
 Run result: 0
@@ -192,9 +195,64 @@ Total cycles consumed: 5165491(4.9M)
 Transfer cycles: 1796(1.8K), running cycles: 5163695(4.9M)
 ```
 
-With `ckb-debugger --bin build/libecc_nn_mul_redc1`, we have
+With `ckb-debugger --bin build/libecc_nn_mul_redc1` (where [`build/libecc_nn_mul_redc1`](https://github.com/contrun/ckb-miscellaneous-scripts/blob/secp256r1_blake160_optiomization/c/libecc_nn_mul_redc1.c) is a simple program to benchmark libecc's implemenation of Montgomery multiplication), we have
 ```
 Run result: 0
 Total cycles consumed: 18112888(17.3M)
 Transfer cycles: 6522(6.4K), running cycles: 18106366(17.3M)
+```
+
+## integrating new Montgomery implementation into signature verification
+
+We need to compare the memory represenations of two big number systems. In fp256, a 256 bit number is represented as an array of `uint64_t` numbers,
+while in libecc any big number is represented as an array of `u8`s (`unsigned char`s).
+
+We need to first check the endianness of `uint64_t`s in an fp256 big number and the endianness of bytes in a `uint64_t`, and then check the endianness of `u8`s in a libecc big number.
+Fortunately, riscv is little-endian, both `uint64_t`s in an fp256 big number and `u8`s in a libecc big number are little endian.
+That is to say, we need only to copy (or set) memory from two implementations.
+We may just replace libecc `_nn_mul_redc1` with
+
+```
+static void _nn_mul_redc1(nn_t out, nn_src_t in1, nn_src_t in2, nn_src_t p,
+			  word_t mpinv) {
+  ll_u256_mont_mul(out->val, in1->val, in2->val, p->val, mpinv);
+}
+
+```
+
+Unfortunately, not so fast. There is another small problem. The code above would run forever.
+The memory representation of a big number in libecc is defined as a `nn`, which is
+```
+typedef struct {
+  word_t val[BIT_LEN_WORDS(NN_MAX_BIT_LEN)];
+  word_t magic;
+  u8 wlen;
+} nn;
+```
+There is some redundant information (`wlen`, word length of this big number) embedded in this struct.
+We need to initialize the `wlen` of the multiplication result with `nn_set_wlen(out, p->wlen)`.
+Then, we are good to go.
+
+```
+Run result: 0
+Total cycles consumed: 14407842(13.7M)
+Transfer cycles: 14130(13.8K), running cycles: 14393712(13.7M)
+total cycles: 13.7 M
+nn_mul_redc1: 24 %
+nn_set_wlen: 10 %
+nn_cmp: 10 %
+nn_cnd_sub: 10 %
+nn_cnd_add: 7 %
+nn_init: 6 %
+nn_bitlen: 5 %
+nn_rshift_fixedlen: 2 %
+nn_copy: 1 %
+nn_mod_sub: 1 %
+fp_mul_redc1: 1 %
+fp_init: 1 %
+nn_check_initialized: 1 %
+nn_uninit: 1 %
+nn_mod_add: 0 %
+nn_modinv_odd: 0 %
+nn_cnd_swap: 0 %
 ```
