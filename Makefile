@@ -17,6 +17,9 @@ CKB_VM_CLI := ckb-vm-b-cli
 
 LIBECC_PATH := deps/libecc
 CFLAGS_LIBECC := -fno-builtin -DWORDSIZE=64 -DWITH_STDLIB -DWITH_BLANK_EXTERNAL_DEPENDENCIES -fPIC -g -O3
+ifeq ($(LIBECC_WITH_LL_U256_MONT),1)
+CFLAGS_LIBECC += -DWITH_LL_U256_MONT
+endif
 CFLAGS_LINK_TO_LIBECC := -fno-builtin -DWORDSIZE=64 -DWITH_STDLIB -DWITH_BLANK_EXTERNAL_DEPENDENCIES -fno-builtin-printf -I ${LIBECC_PATH}/src -I ${LIBECC_PATH}/src/external_deps
 LIBECC_FILES := ${LIBECC_PATH}/build/libarith.a ${LIBECC_PATH}/build/libec.a ${LIBECC_PATH}/build/libsign.a
 

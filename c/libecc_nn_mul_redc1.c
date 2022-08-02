@@ -1,6 +1,13 @@
-#ifdef WITH_STDLIB
+// make printf to work: by default, the function printf is not included.
+#define CKB_C_STDLIB_PRINTF
+
+// use deps/ckb-c-stdlib
 #include <stdio.h>
-#endif
+#include <stdlib.h>
+
+// printf will use syscalls "ckb_debug" to print message to console
+#include <ckb_syscalls.h>
+
 #include "../libsig.h"
 
 #ifdef VERBOSE_INNER_VALUES
@@ -10,7 +17,7 @@
 
 #include "libecc_helper.h"
 
-#define LOOP_COUNT 10000
+#define LOOP_COUNT 10
 
 /*
  * montgomery multiplication test with fp256
@@ -35,14 +42,20 @@ int main(int argc, const char *argv[]) {
 
 const size_t nn_buf_size = 256 / 8;
 
-__attribute__((always_inline)) inline void dump_nn(nn_src_t a) {
+__attribute__((always_inline)) inline void dump_nn(char *m, nn_src_t a) {
 #ifdef VERBOSE_INNER_VALUES
   u8 tmp_buf[nn_buf_size];
-  dbg_nn_print("a", a);
+  dbg_nn_print(m, a);
   nn_export_to_buf((u8 *)&tmp_buf, nn_buf_size, a);
+  dbg_buf_print(m, &tmp_buf);
   dbg_buf_print("a", &tmp_buf);
 #else
-  (void)(a);
+  const unsigned char *buf = (const unsigned char *)a->val;
+  printf("%s: ", m);
+  for (size_t i = 0; i < nn_buf_size; i++) {
+    printf("%02x", buf[i]);
+  }
+  printf("\n");
 #endif
 }
 
@@ -71,9 +84,9 @@ int main() {
 
   word_t k = 0xfb9ab0f02a8457bb;
 
-  dump_nn(&a);
-  dump_nn(&b);
-  dump_nn(&N);
+  dump_nn("a", &a);
+  dump_nn("b", &b);
+  dump_nn("N", &N);
 
   nn out;
   nn_zero(&out);
@@ -82,6 +95,6 @@ int main() {
     nn_mul_redc1(&out, &a, &b, &N, k);
   }
 
-  dump_nn(&out);
+  dump_nn("out", &out);
   return 0;
 }
