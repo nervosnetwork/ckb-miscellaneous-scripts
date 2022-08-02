@@ -1,29 +1,3 @@
-// Note this program requires an older version of libecc,
-// Use, for example,
-// https://github.com/contrun/libecc/tree/a708b61e7be669c277524bf8da423277330bf5ca
-// Assume libecc code lies in /workspace/libecc
-// Run make V=1 LIBECC_PATH=/workspace/libecc build/secp256r1_blake160_sighash_lay2dev_bench
-
-/*
- *  Copyright (C) 2017 - This file is part of libecc project
- *
- *  Authors:
- *      Ryad BENADJILA <ryadbenadjila@gmail.com>
- *      Arnaud EBALARD <arnaud.ebalard@ssi.gouv.fr>
- *      Jean-Pierre FLORI <jean-pierre.flori@ssi.gouv.fr>
- *
- *  Contributors:
- *      Nicolas VIVET <nicolas.vivet@ssi.gouv.fr>
- *      Karim KHALFALLAH <karim.khalfallah@ssi.gouv.fr>
- *
- *  This software is licensed under a dual BSD and GPL v2 license.
- *  See LICENSE file at the root folder of the project.
- */
-#ifdef WITH_STDLIB
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#endif
 #include "../libsig.h"
 #include "libecc_helper.h"
 
