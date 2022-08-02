@@ -1,0 +1,41 @@
+[package]
+name = "secp256r1-blake160-tests"
+version = "0.5.4"
+authors = ["Nervos Core Dev <dev@nervos.org>"]
+edition = "2021"
+build = "build.rs"
+license = "MIT"
+description = "secp256r1 blake160 tests"
+repository = "https://github.com/nervosnetwork/ckb-miscellaneous-scripts"
+include = ["src/**/*", "Cargo.toml", "build.rs", "../../build/*"]
+
+[dependencies]
+includedir = "0.6"
+phf = "0.8"
+p256 = "0.11.1"
+
+[build-dependencies]
+includedir_codegen = "0.6"
+blake2b-rs = "0.2"
+faster-hex = "0.6.0"
+
+[dev-dependencies]
+byteorder = "1.3.1"
+ckb-chain-spec = "0.103.0"
+ckb-types = "0.103.0"
+ckb-traits = "0.103.0"
+ckb-script = "0.103.0"
+ckb-crypto = "0.103.0"
+ckb-dao-utils = "0.103.0"
+ckb-hash = "0.103.0"
+ckb-error = "0.103.0"
+rand = "0.7"
+rand_chacha = "0.3.1"
+lazy_static = "1.3.0"
+ripemd160 = "0.8.0"
+sha2 = "0.8.0"
+secp256k1 = { version = "0.15.1" }
+faster-hex = "0.6.0"
+hex-literal = "0.3.4"
+bytes = "1.1.0"
+blake2b-rs = "0.2.0"

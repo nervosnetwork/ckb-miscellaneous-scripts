@@ -15,3 +15,7 @@
 	path = deps/ckb-c-stdlib-202106
 	url = https://github.com/XuJiandong/ckb-c-stdlib.git
 	branch = add-identity
+[submodule "deps/libecc"]
+	path = deps/libecc
+	url = https://github.com/contrun/libecc.git
+	branch = blank_external_dependencies
