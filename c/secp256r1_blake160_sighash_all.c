@@ -1,6 +1,6 @@
-// # secp256k1-blake160-sighash-all
+// # secp256r1-blake160-sighash-all
 //
-// This is a lock script code using the same secp256k1 signature verification
+// This is a lock script code using the same secp256r1 signature verification
 // algorithm as used in bitcoin. When executed, it performs the blake2b hash
 // (with "ckb-default-hash" used as the personalization value) on the following
 // concatenated components:
