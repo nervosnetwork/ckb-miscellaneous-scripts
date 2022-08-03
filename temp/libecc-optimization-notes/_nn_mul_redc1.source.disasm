@@ -1,0 +1,981 @@
+00000000000121ca <_nn_mul_redc1>:
+ * The p input is the modulo number of the Montgomery multiplication,
+ * and mpinv is -p^(-1) mod (2^WORDSIZE).
+ */
+static void _nn_mul_redc1(nn_t out, nn_src_t in1, nn_src_t in2, nn_src_t p,
+			  word_t mpinv)
+{
+   121ca:	7159                	addi	sp,sp,-112
+   121cc:	f0a2                	sd	s0,96(sp)
+   121ce:	842a                	mv	s0,a0
+	word_t prod_high, prod_low, carry, acc, m;
+	unsigned int i, j, len, len_mul;
+	/* a and b inputs such that len(b) <= len(a) */
+	nn_src_t a, b;
+
+	nn_check_initialized(in1);
+   121d0:	852e                	mv	a0,a1
+{
+   121d2:	f486                	sd	ra,104(sp)
+   121d4:	eca6                	sd	s1,88(sp)
+   121d6:	e8ca                	sd	s2,80(sp)
+   121d8:	84ba                	mv	s1,a4
+   121da:	8936                	mv	s2,a3
+   121dc:	e4ce                	sd	s3,72(sp)
+   121de:	e0d2                	sd	s4,64(sp)
+   121e0:	89ae                	mv	s3,a1
+   121e2:	8a32                	mv	s4,a2
+   121e4:	fc56                	sd	s5,56(sp)
+   121e6:	f85a                	sd	s6,48(sp)
+   121e8:	f45e                	sd	s7,40(sp)
+   121ea:	f062                	sd	s8,32(sp)
+   121ec:	ec66                	sd	s9,24(sp)
+   121ee:	e86a                	sd	s10,16(sp)
+   121f0:	e46e                	sd	s11,8(sp)
+	nn_check_initialized(in1);
+   121f2:	9cafe0ef          	jal	ra,103bc <nn_check_initialized>
+	nn_check_initialized(in2);
+   121f6:	8552                	mv	a0,s4
+   121f8:	9c4fe0ef          	jal	ra,103bc <nn_check_initialized>
+	nn_check_initialized(p);
+   121fc:	854a                	mv	a0,s2
+   121fe:	9befe0ef          	jal	ra,103bc <nn_check_initialized>
+	 * SHOULD_HAVE primitive.
+	 */
+	SHOULD_HAVE(nn_cmp(in1, p) < 0);
+	SHOULD_HAVE(nn_cmp(in2, p) < 0);
+
+	nn_init(out, 0);
+   12202:	4581                	li	a1,0
+   12204:	8522                	mv	a0,s0
+   12206:	9dcfe0ef          	jal	ra,103e2 <nn_init>
+	/* Check which one of in1 or in2 is the biggest */
+	a = (in1->wlen <= in2->wlen) ? in2 : in1;
+   1220a:	0689c703          	lbu	a4,104(s3)
+   1220e:	068a4783          	lbu	a5,104(s4)
+   12212:	00e7f563          	bgeu	a5,a4,1221c <_nn_mul_redc1+0x52>
+   12216:	87ce                	mv	a5,s3
+   12218:	89d2                	mv	s3,s4
+   1221a:	8a3e                	mv	s4,a5
+	 * because of leading zeroes. It is important for our
+	 * Montgomery algorithm to work on sizes consistent with
+	 * out prime p real bit size. Thus, we expand the output
+	 * size to the size of p.
+	 */
+	nn_set_wlen(out, p->wlen);
+   1221c:	06894583          	lbu	a1,104(s2)
+   12220:	8522                	mv	a0,s0
+   12222:	c76fe0ef          	jal	ra,10698 <nn_set_wlen>
+
+	len = out->wlen;
+   12226:	06844883          	lbu	a7,104(s0)
+	len_mul = b->wlen;
+	/*
+	 * We extend out to store carries. We first check that we
+	 * do not have an overflow on the NN size.
+	 */
+	MUST_HAVE(NN_MAX_BIT_LEN >= (WORD_BITS * (out->wlen + 1)));
+   1222a:	30000793          	li	a5,768
+   1222e:	0018871b          	addiw	a4,a7,1
+   12232:	0067169b          	slliw	a3,a4,0x6
+   12236:	74d7c563          	blt	a5,a3,12980 <_nn_mul_redc1+0x7b6>
+	out->wlen += 1;
+   1223a:	0ff77713          	andi	a4,a4,255
+	len_mul = b->wlen;
+   1223e:	0689c083          	lbu	ra,104(s3)
+	out->wlen += 1;
+   12242:	06e40423          	sb	a4,104(s0)
+	len = out->wlen;
+   12246:	2881                	sext.w	a7,a7
+
+	/*
+	 * This can be skipped if the first iteration of the for loop
+	 * is separated.
+	 */
+	for (i = 0; i < out->wlen; i++) {
+   12248:	0007079b          	sext.w	a5,a4
+   1224c:	cf25                	beqz	a4,122c4 <_nn_mul_redc1+0xfa>
+		out->val[i] = 0;
+   1224e:	00043023          	sd	zero,0(s0)
+	for (i = 0; i < out->wlen; i++) {
+   12252:	4705                	li	a4,1
+   12254:	06e78663          	beq	a5,a4,122c0 <_nn_mul_redc1+0xf6>
+		out->val[i] = 0;
+   12258:	00043423          	sd	zero,8(s0)
+	for (i = 0; i < out->wlen; i++) {
+   1225c:	4709                	li	a4,2
+   1225e:	06e78163          	beq	a5,a4,122c0 <_nn_mul_redc1+0xf6>
+		out->val[i] = 0;
+   12262:	00043823          	sd	zero,16(s0)
+	for (i = 0; i < out->wlen; i++) {
+   12266:	470d                	li	a4,3
+   12268:	04e78c63          	beq	a5,a4,122c0 <_nn_mul_redc1+0xf6>
+		out->val[i] = 0;
+   1226c:	00043c23          	sd	zero,24(s0)
+	for (i = 0; i < out->wlen; i++) {
+   12270:	4711                	li	a4,4
+   12272:	04e78763          	beq	a5,a4,122c0 <_nn_mul_redc1+0xf6>
+		out->val[i] = 0;
+   12276:	02043023          	sd	zero,32(s0)
+	for (i = 0; i < out->wlen; i++) {
+   1227a:	4715                	li	a4,5
+   1227c:	04e78263          	beq	a5,a4,122c0 <_nn_mul_redc1+0xf6>
+		out->val[i] = 0;
+   12280:	02043423          	sd	zero,40(s0)
+	for (i = 0; i < out->wlen; i++) {
+   12284:	4719                	li	a4,6
+   12286:	02e78d63          	beq	a5,a4,122c0 <_nn_mul_redc1+0xf6>
+		out->val[i] = 0;
+   1228a:	02043823          	sd	zero,48(s0)
+	for (i = 0; i < out->wlen; i++) {
+   1228e:	471d                	li	a4,7
+   12290:	02e78863          	beq	a5,a4,122c0 <_nn_mul_redc1+0xf6>
+		out->val[i] = 0;
+   12294:	02043c23          	sd	zero,56(s0)
+	for (i = 0; i < out->wlen; i++) {
+   12298:	4721                	li	a4,8
+   1229a:	02e78363          	beq	a5,a4,122c0 <_nn_mul_redc1+0xf6>
+		out->val[i] = 0;
+   1229e:	04043023          	sd	zero,64(s0)
+	for (i = 0; i < out->wlen; i++) {
+   122a2:	4725                	li	a4,9
+   122a4:	00e78e63          	beq	a5,a4,122c0 <_nn_mul_redc1+0xf6>
+		out->val[i] = 0;
+   122a8:	04043423          	sd	zero,72(s0)
+	for (i = 0; i < out->wlen; i++) {
+   122ac:	4729                	li	a4,10
+   122ae:	00e78963          	beq	a5,a4,122c0 <_nn_mul_redc1+0xf6>
+		out->val[i] = 0;
+   122b2:	04043823          	sd	zero,80(s0)
+	for (i = 0; i < out->wlen; i++) {
+   122b6:	472d                	li	a4,11
+   122b8:	00e78463          	beq	a5,a4,122c0 <_nn_mul_redc1+0xf6>
+		out->val[i] = 0;
+   122bc:	04043c23          	sd	zero,88(s0)
+	}
+	for (i = 0; i < len; i++) {
+   122c0:	68088c63          	beqz	a7,12958 <_nn_mul_redc1+0x78e>
+   122c4:	fff0839b          	addiw	t2,ra,-1
+   122c8:	1382                	slli	t2,t2,0x20
+   122ca:	01d3d393          	srli	t2,t2,0x1d
+   122ce:	00840793          	addi	a5,s0,8
+   122d2:	fff88c9b          	addiw	s9,a7,-1
+		carry = WORD(0);
+		for (j = 0; j < len_mul; j++) {
+			WORD_MUL(prod_high, prod_low, a->val[i], b->val[j]);
+   122d6:	5f7d                	li	t5,-1
+   122d8:	82d2                	mv	t0,s4
+   122da:	8ae6                	mv	s5,s9
+	len_mul = b->wlen;
+   122dc:	2081                	sext.w	ra,ra
+   122de:	93be                	add	t2,t2,a5
+   122e0:	4a01                	li	s4,0
+			WORD_MUL(prod_high, prod_low, a->val[i], b->val[j]);
+   122e2:	020f5f13          	srli	t5,t5,0x20
+
+		m = out->val[0] * mpinv;
+		WORD_MUL(prod_high, prod_low, m, p->val[0]);
+		prod_low += out->val[0];
+		carry = prod_high + (prod_low < out->val[0]);
+		for (j = 1; j < len; j++) {
+   122e6:	4d85                	li	s11,1
+   122e8:	4d09                	li	s10,2
+   122ea:	4c0d                	li	s8,3
+   122ec:	4b91                	li	s7,4
+   122ee:	4b15                	li	s6,5
+		carry = WORD(0);
+   122f0:	4781                	li	a5,0
+   122f2:	86be                	mv	a3,a5
+   122f4:	884e                	mv	a6,s3
+		for (j = 0; j < len_mul; j++) {
+   122f6:	8522                	mv	a0,s0
+   122f8:	4701                	li	a4,0
+		carry = WORD(0);
+   122fa:	8786                	mv	a5,ra
+		for (j = 0; j < len_mul; j++) {
+   122fc:	06008a63          	beqz	ra,12370 <_nn_mul_redc1+0x1a6>
+			WORD_MUL(prod_high, prod_low, a->val[i], b->val[j]);
+   12300:	00083783          	ld	a5,0(a6)
+   12304:	0002b703          	ld	a4,0(t0)
+			out->val[j] += prod_low;
+   12308:	00053303          	ld	t1,0(a0)
+			WORD_MUL(prod_high, prod_low, a->val[i], b->val[j]);
+   1230c:	0207de13          	srli	t3,a5,0x20
+   12310:	02075e93          	srli	t4,a4,0x20
+   12314:	01e7f7b3          	and	a5,a5,t5
+   12318:	01e77733          	and	a4,a4,t5
+   1231c:	03c70fb3          	mul	t6,a4,t3
+   12320:	0521                	addi	a0,a0,8
+   12322:	0821                	addi	a6,a6,8
+   12324:	02fe8633          	mul	a2,t4,a5
+   12328:	02f70733          	mul	a4,a4,a5
+   1232c:	967e                	add	a2,a2,t6
+   1232e:	02061593          	slli	a1,a2,0x20
+   12332:	02065793          	srli	a5,a2,0x20
+   12336:	01f63633          	sltu	a2,a2,t6
+   1233a:	1602                	slli	a2,a2,0x20
+   1233c:	03ce8e33          	mul	t3,t4,t3
+   12340:	00e58eb3          	add	t4,a1,a4
+			prod_low += carry;
+   12344:	00de85b3          	add	a1,t4,a3
+			WORD_MUL(prod_high, prod_low, a->val[i], b->val[j]);
+   12348:	00eeb733          	sltu	a4,t4,a4
+			prod_high += (prod_low < carry);
+   1234c:	00d5b6b3          	sltu	a3,a1,a3
+			out->val[j] += prod_low;
+   12350:	932e                	add	t1,t1,a1
+			carry = prod_high + (out->val[j] < prod_low);
+   12352:	00b335b3          	sltu	a1,t1,a1
+			out->val[j] += prod_low;
+   12356:	fe653c23          	sd	t1,-8(a0)
+			WORD_MUL(prod_high, prod_low, a->val[i], b->val[j]);
+   1235a:	97f2                	add	a5,a5,t3
+   1235c:	97b2                	add	a5,a5,a2
+   1235e:	973e                	add	a4,a4,a5
+			prod_high += (prod_low < carry);
+   12360:	96ba                	add	a3,a3,a4
+			carry = prod_high + (out->val[j] < prod_low);
+   12362:	96ae                	add	a3,a3,a1
+		for (j = 0; j < len_mul; j++) {
+   12364:	f8751ee3          	bne	a0,t2,12300 <_nn_mul_redc1+0x136>
+   12368:	87b6                	mv	a5,a3
+		for (; j < len; j++) {
+   1236a:	8706                	mv	a4,ra
+   1236c:	1910fa63          	bgeu	ra,a7,12500 <_nn_mul_redc1+0x336>
+			out->val[j] += carry;
+   12370:	02071693          	slli	a3,a4,0x20
+   12374:	82f5                	srli	a3,a3,0x1d
+   12376:	96a2                	add	a3,a3,s0
+   12378:	6290                	ld	a2,0(a3)
+		for (; j < len; j++) {
+   1237a:	0017059b          	addiw	a1,a4,1
+   1237e:	0005851b          	sext.w	a0,a1
+			out->val[j] += carry;
+   12382:	963e                	add	a2,a2,a5
+   12384:	e290                	sd	a2,0(a3)
+			carry = out->val[j] < carry;
+   12386:	00f637b3          	sltu	a5,a2,a5
+		for (; j < len; j++) {
+   1238a:	17157463          	bgeu	a0,a7,124f2 <_nn_mul_redc1+0x328>
+			out->val[j] += carry;
+   1238e:	02059613          	slli	a2,a1,0x20
+   12392:	8275                	srli	a2,a2,0x1d
+   12394:	9622                	add	a2,a2,s0
+   12396:	00063803          	ld	a6,0(a2)
+		for (; j < len; j++) {
+   1239a:	0027069b          	addiw	a3,a4,2
+   1239e:	0006831b          	sext.w	t1,a3
+			out->val[j] += carry;
+   123a2:	983e                	add	a6,a6,a5
+   123a4:	01063023          	sd	a6,0(a2)
+			carry = out->val[j] < carry;
+   123a8:	00f837b3          	sltu	a5,a6,a5
+		for (; j < len; j++) {
+   123ac:	15137363          	bgeu	t1,a7,124f2 <_nn_mul_redc1+0x328>
+			out->val[j] += carry;
+   123b0:	02069613          	slli	a2,a3,0x20
+   123b4:	8275                	srli	a2,a2,0x1d
+   123b6:	9622                	add	a2,a2,s0
+   123b8:	00063803          	ld	a6,0(a2)
+		for (; j < len; j++) {
+   123bc:	0037069b          	addiw	a3,a4,3
+   123c0:	0006831b          	sext.w	t1,a3
+			out->val[j] += carry;
+   123c4:	983e                	add	a6,a6,a5
+   123c6:	01063023          	sd	a6,0(a2)
+			carry = out->val[j] < carry;
+   123ca:	00f837b3          	sltu	a5,a6,a5
+		for (; j < len; j++) {
+   123ce:	13137263          	bgeu	t1,a7,124f2 <_nn_mul_redc1+0x328>
+			out->val[j] += carry;
+   123d2:	02069613          	slli	a2,a3,0x20
+   123d6:	8275                	srli	a2,a2,0x1d
+   123d8:	9622                	add	a2,a2,s0
+   123da:	00063803          	ld	a6,0(a2)
+		for (; j < len; j++) {
+   123de:	0047069b          	addiw	a3,a4,4
+   123e2:	0006831b          	sext.w	t1,a3
+			out->val[j] += carry;
+   123e6:	983e                	add	a6,a6,a5
+   123e8:	01063023          	sd	a6,0(a2)
+			carry = out->val[j] < carry;
+   123ec:	00f837b3          	sltu	a5,a6,a5
+		for (; j < len; j++) {
+   123f0:	11137163          	bgeu	t1,a7,124f2 <_nn_mul_redc1+0x328>
+			out->val[j] += carry;
+   123f4:	02069613          	slli	a2,a3,0x20
+   123f8:	8275                	srli	a2,a2,0x1d
+   123fa:	9622                	add	a2,a2,s0
+   123fc:	00063803          	ld	a6,0(a2)
+		for (; j < len; j++) {
+   12400:	0057069b          	addiw	a3,a4,5
+   12404:	0006831b          	sext.w	t1,a3
+			out->val[j] += carry;
+   12408:	983e                	add	a6,a6,a5
+   1240a:	01063023          	sd	a6,0(a2)
+			carry = out->val[j] < carry;
+   1240e:	00f837b3          	sltu	a5,a6,a5
+		for (; j < len; j++) {
+   12412:	0f137063          	bgeu	t1,a7,124f2 <_nn_mul_redc1+0x328>
+			out->val[j] += carry;
+   12416:	02069613          	slli	a2,a3,0x20
+   1241a:	8275                	srli	a2,a2,0x1d
+   1241c:	9622                	add	a2,a2,s0
+   1241e:	00063803          	ld	a6,0(a2)
+		for (; j < len; j++) {
+   12422:	0067069b          	addiw	a3,a4,6
+   12426:	0006831b          	sext.w	t1,a3
+			out->val[j] += carry;
+   1242a:	983e                	add	a6,a6,a5
+   1242c:	01063023          	sd	a6,0(a2)
+			carry = out->val[j] < carry;
+   12430:	00f837b3          	sltu	a5,a6,a5
+		for (; j < len; j++) {
+   12434:	0b137f63          	bgeu	t1,a7,124f2 <_nn_mul_redc1+0x328>
+			out->val[j] += carry;
+   12438:	02069613          	slli	a2,a3,0x20
+   1243c:	8275                	srli	a2,a2,0x1d
+   1243e:	9622                	add	a2,a2,s0
+   12440:	00063803          	ld	a6,0(a2)
+		for (; j < len; j++) {
+   12444:	0077069b          	addiw	a3,a4,7
+   12448:	0006831b          	sext.w	t1,a3
+			out->val[j] += carry;
+   1244c:	983e                	add	a6,a6,a5
+   1244e:	01063023          	sd	a6,0(a2)
+			carry = out->val[j] < carry;
+   12452:	00f837b3          	sltu	a5,a6,a5
+		for (; j < len; j++) {
+   12456:	09137e63          	bgeu	t1,a7,124f2 <_nn_mul_redc1+0x328>
+			out->val[j] += carry;
+   1245a:	02069613          	slli	a2,a3,0x20
+   1245e:	8275                	srli	a2,a2,0x1d
+   12460:	9622                	add	a2,a2,s0
+   12462:	00063803          	ld	a6,0(a2)
+		for (; j < len; j++) {
+   12466:	0087069b          	addiw	a3,a4,8
+   1246a:	0006831b          	sext.w	t1,a3
+			out->val[j] += carry;
+   1246e:	983e                	add	a6,a6,a5
+   12470:	01063023          	sd	a6,0(a2)
+			carry = out->val[j] < carry;
+   12474:	00f837b3          	sltu	a5,a6,a5
+		for (; j < len; j++) {
+   12478:	07137d63          	bgeu	t1,a7,124f2 <_nn_mul_redc1+0x328>
+			out->val[j] += carry;
+   1247c:	02069613          	slli	a2,a3,0x20
+   12480:	8275                	srli	a2,a2,0x1d
+   12482:	9622                	add	a2,a2,s0
+   12484:	00063803          	ld	a6,0(a2)
+		for (; j < len; j++) {
+   12488:	0097069b          	addiw	a3,a4,9
+   1248c:	0006831b          	sext.w	t1,a3
+			out->val[j] += carry;
+   12490:	983e                	add	a6,a6,a5
+   12492:	01063023          	sd	a6,0(a2)
+			carry = out->val[j] < carry;
+   12496:	00f837b3          	sltu	a5,a6,a5
+		for (; j < len; j++) {
+   1249a:	05137c63          	bgeu	t1,a7,124f2 <_nn_mul_redc1+0x328>
+			out->val[j] += carry;
+   1249e:	02069613          	slli	a2,a3,0x20
+   124a2:	8275                	srli	a2,a2,0x1d
+   124a4:	9622                	add	a2,a2,s0
+   124a6:	00063803          	ld	a6,0(a2)
+		for (; j < len; j++) {
+   124aa:	00a7069b          	addiw	a3,a4,10
+   124ae:	0006831b          	sext.w	t1,a3
+			out->val[j] += carry;
+   124b2:	983e                	add	a6,a6,a5
+   124b4:	01063023          	sd	a6,0(a2)
+			carry = out->val[j] < carry;
+   124b8:	00f837b3          	sltu	a5,a6,a5
+		for (; j < len; j++) {
+   124bc:	03137b63          	bgeu	t1,a7,124f2 <_nn_mul_redc1+0x328>
+			out->val[j] += carry;
+   124c0:	02069613          	slli	a2,a3,0x20
+   124c4:	8275                	srli	a2,a2,0x1d
+   124c6:	9622                	add	a2,a2,s0
+   124c8:	00063803          	ld	a6,0(a2)
+		for (; j < len; j++) {
+   124cc:	00b7069b          	addiw	a3,a4,11
+   124d0:	0006831b          	sext.w	t1,a3
+			out->val[j] += carry;
+   124d4:	983e                	add	a6,a6,a5
+   124d6:	01063023          	sd	a6,0(a2)
+			carry = out->val[j] < carry;
+   124da:	00f837b3          	sltu	a5,a6,a5
+		for (; j < len; j++) {
+   124de:	01137a63          	bgeu	t1,a7,124f2 <_nn_mul_redc1+0x328>
+			out->val[j] += carry;
+   124e2:	1682                	slli	a3,a3,0x20
+   124e4:	82f5                	srli	a3,a3,0x1d
+   124e6:	96a2                	add	a3,a3,s0
+   124e8:	6290                	ld	a2,0(a3)
+   124ea:	963e                	add	a2,a2,a5
+   124ec:	e290                	sd	a2,0(a3)
+			carry = out->val[j] < carry;
+   124ee:	00f637b3          	sltu	a5,a2,a5
+		for (; j < len; j++) {
+   124f2:	4681                	li	a3,0
+   124f4:	00a8e463          	bltu	a7,a0,124fc <_nn_mul_redc1+0x332>
+   124f8:	40ea86bb          	subw	a3,s5,a4
+   124fc:	00b6873b          	addw	a4,a3,a1
+		out->val[j] += carry;
+   12500:	1702                	slli	a4,a4,0x20
+   12502:	8375                	srli	a4,a4,0x1d
+   12504:	9722                	add	a4,a4,s0
+   12506:	630c                	ld	a1,0(a4)
+   12508:	95be                	add	a1,a1,a5
+   1250a:	e30c                	sd	a1,0(a4)
+		m = out->val[0] * mpinv;
+   1250c:	00043303          	ld	t1,0(s0)
+		WORD_MUL(prod_high, prod_low, m, p->val[0]);
+   12510:	00093503          	ld	a0,0(s2)
+		acc = out->val[j] < carry;
+   12514:	00f5b5b3          	sltu	a1,a1,a5
+		m = out->val[0] * mpinv;
+   12518:	02930733          	mul	a4,t1,s1
+		WORD_MUL(prod_high, prod_low, m, p->val[0]);
+   1251c:	02055e13          	srli	t3,a0,0x20
+   12520:	01e57533          	and	a0,a0,t5
+   12524:	02075693          	srli	a3,a4,0x20
+   12528:	01e77733          	and	a4,a4,t5
+   1252c:	03c70eb3          	mul	t4,a4,t3
+   12530:	02a68833          	mul	a6,a3,a0
+   12534:	03c68e33          	mul	t3,a3,t3
+   12538:	9876                	add	a6,a6,t4
+   1253a:	02081613          	slli	a2,a6,0x20
+   1253e:	02085793          	srli	a5,a6,0x20
+   12542:	01d83833          	sltu	a6,a6,t4
+   12546:	1802                	slli	a6,a6,0x20
+   12548:	02a70533          	mul	a0,a4,a0
+   1254c:	97f2                	add	a5,a5,t3
+   1254e:	97c2                	add	a5,a5,a6
+   12550:	962a                	add	a2,a2,a0
+   12552:	00a63533          	sltu	a0,a2,a0
+		prod_low += out->val[0];
+   12556:	961a                	add	a2,a2,t1
+		carry = prod_high + (prod_low < out->val[0]);
+   12558:	00663633          	sltu	a2,a2,t1
+		WORD_MUL(prod_high, prod_low, m, p->val[0]);
+   1255c:	97aa                	add	a5,a5,a0
+		carry = prod_high + (prod_low < out->val[0]);
+   1255e:	97b2                	add	a5,a5,a2
+		for (j = 1; j < len; j++) {
+   12560:	431df163          	bgeu	s11,a7,12982 <_nn_mul_redc1+0x7b8>
+			WORD_MUL(prod_high, prod_low, m, p->val[j]);
+   12564:	00893503          	ld	a0,8(s2)
+			prod_low += carry;
+			prod_high += (prod_low < carry);
+			out->val[j - 1] = prod_low + out->val[j];
+   12568:	00843e03          	ld	t3,8(s0)
+			WORD_MUL(prod_high, prod_low, m, p->val[j]);
+   1256c:	02055813          	srli	a6,a0,0x20
+   12570:	01e57533          	and	a0,a0,t5
+   12574:	03070fb3          	mul	t6,a4,a6
+   12578:	02a68633          	mul	a2,a3,a0
+   1257c:	03068833          	mul	a6,a3,a6
+   12580:	967e                	add	a2,a2,t6
+   12582:	02061313          	slli	t1,a2,0x20
+   12586:	02065e93          	srli	t4,a2,0x20
+   1258a:	01f63633          	sltu	a2,a2,t6
+   1258e:	1602                	slli	a2,a2,0x20
+   12590:	02a70533          	mul	a0,a4,a0
+   12594:	9876                	add	a6,a6,t4
+   12596:	9642                	add	a2,a2,a6
+   12598:	00a30fb3          	add	t6,t1,a0
+			prod_low += carry;
+   1259c:	01f78333          	add	t1,a5,t6
+			WORD_MUL(prod_high, prod_low, m, p->val[j]);
+   125a0:	00afb533          	sltu	a0,t6,a0
+			prod_high += (prod_low < carry);
+   125a4:	00f337b3          	sltu	a5,t1,a5
+			out->val[j - 1] = prod_low + out->val[j];
+   125a8:	9e1a                	add	t3,t3,t1
+			WORD_MUL(prod_high, prod_low, m, p->val[j]);
+   125aa:	962a                	add	a2,a2,a0
+			carry = prod_high + (out->val[j - 1] < prod_low);
+   125ac:	006e3333          	sltu	t1,t3,t1
+			prod_high += (prod_low < carry);
+   125b0:	97b2                	add	a5,a5,a2
+			out->val[j - 1] = prod_low + out->val[j];
+   125b2:	01c43023          	sd	t3,0(s0)
+			carry = prod_high + (out->val[j - 1] < prod_low);
+   125b6:	979a                	add	a5,a5,t1
+		for (j = 1; j < len; j++) {
+   125b8:	37a88d63          	beq	a7,s10,12932 <_nn_mul_redc1+0x768>
+			WORD_MUL(prod_high, prod_low, m, p->val[j]);
+   125bc:	01093503          	ld	a0,16(s2)
+			out->val[j - 1] = prod_low + out->val[j];
+   125c0:	01043e03          	ld	t3,16(s0)
+			WORD_MUL(prod_high, prod_low, m, p->val[j]);
+   125c4:	02055813          	srli	a6,a0,0x20
+   125c8:	01e57533          	and	a0,a0,t5
+   125cc:	03070fb3          	mul	t6,a4,a6
+   125d0:	02a68633          	mul	a2,a3,a0
+   125d4:	03068833          	mul	a6,a3,a6
+   125d8:	967e                	add	a2,a2,t6
+   125da:	02061313          	slli	t1,a2,0x20
+   125de:	02065e93          	srli	t4,a2,0x20
+   125e2:	01f63633          	sltu	a2,a2,t6
+   125e6:	1602                	slli	a2,a2,0x20
+   125e8:	02a70533          	mul	a0,a4,a0
+   125ec:	9876                	add	a6,a6,t4
+   125ee:	9642                	add	a2,a2,a6
+   125f0:	00a30fb3          	add	t6,t1,a0
+			prod_low += carry;
+   125f4:	00ff8333          	add	t1,t6,a5
+			WORD_MUL(prod_high, prod_low, m, p->val[j]);
+   125f8:	00afb533          	sltu	a0,t6,a0
+			prod_high += (prod_low < carry);
+   125fc:	00f337b3          	sltu	a5,t1,a5
+			out->val[j - 1] = prod_low + out->val[j];
+   12600:	9e1a                	add	t3,t3,t1
+			WORD_MUL(prod_high, prod_low, m, p->val[j]);
+   12602:	962a                	add	a2,a2,a0
+			carry = prod_high + (out->val[j - 1] < prod_low);
+   12604:	006e3333          	sltu	t1,t3,t1
+			prod_high += (prod_low < carry);
+   12608:	97b2                	add	a5,a5,a2
+			out->val[j - 1] = prod_low + out->val[j];
+   1260a:	01c43423          	sd	t3,8(s0)
+			carry = prod_high + (out->val[j - 1] < prod_low);
+   1260e:	979a                	add	a5,a5,t1
+		for (j = 1; j < len; j++) {
+   12610:	33888163          	beq	a7,s8,12932 <_nn_mul_redc1+0x768>
+			WORD_MUL(prod_high, prod_low, m, p->val[j]);
+   12614:	01893503          	ld	a0,24(s2)
+			out->val[j - 1] = prod_low + out->val[j];
+   12618:	01843e03          	ld	t3,24(s0)
+			WORD_MUL(prod_high, prod_low, m, p->val[j]);
+   1261c:	02055813          	srli	a6,a0,0x20
+   12620:	01e57533          	and	a0,a0,t5
+   12624:	03070fb3          	mul	t6,a4,a6
+   12628:	02a68633          	mul	a2,a3,a0
+   1262c:	03068833          	mul	a6,a3,a6
+   12630:	967e                	add	a2,a2,t6
+   12632:	02061313          	slli	t1,a2,0x20
+   12636:	02065e93          	srli	t4,a2,0x20
+   1263a:	01f63633          	sltu	a2,a2,t6
+   1263e:	1602                	slli	a2,a2,0x20
+   12640:	02a70533          	mul	a0,a4,a0
+   12644:	9876                	add	a6,a6,t4
+   12646:	9642                	add	a2,a2,a6
+   12648:	00a30fb3          	add	t6,t1,a0
+			prod_low += carry;
+   1264c:	00ff8333          	add	t1,t6,a5
+			WORD_MUL(prod_high, prod_low, m, p->val[j]);
+   12650:	00afb533          	sltu	a0,t6,a0
+			prod_high += (prod_low < carry);
+   12654:	00f337b3          	sltu	a5,t1,a5
+			out->val[j - 1] = prod_low + out->val[j];
+   12658:	9e1a                	add	t3,t3,t1
+			WORD_MUL(prod_high, prod_low, m, p->val[j]);
+   1265a:	962a                	add	a2,a2,a0
+			carry = prod_high + (out->val[j - 1] < prod_low);
+   1265c:	006e3333          	sltu	t1,t3,t1
+			prod_high += (prod_low < carry);
+   12660:	97b2                	add	a5,a5,a2
+			out->val[j - 1] = prod_low + out->val[j];
+   12662:	01c43823          	sd	t3,16(s0)
+			carry = prod_high + (out->val[j - 1] < prod_low);
+   12666:	979a                	add	a5,a5,t1
+		for (j = 1; j < len; j++) {
+   12668:	2d788563          	beq	a7,s7,12932 <_nn_mul_redc1+0x768>
+			WORD_MUL(prod_high, prod_low, m, p->val[j]);
+   1266c:	02093503          	ld	a0,32(s2)
+			out->val[j - 1] = prod_low + out->val[j];
+   12670:	02043e03          	ld	t3,32(s0)
+			WORD_MUL(prod_high, prod_low, m, p->val[j]);
+   12674:	02055813          	srli	a6,a0,0x20
+   12678:	01e57533          	and	a0,a0,t5
+   1267c:	03070fb3          	mul	t6,a4,a6
+   12680:	02a68633          	mul	a2,a3,a0
+   12684:	03068833          	mul	a6,a3,a6
+   12688:	967e                	add	a2,a2,t6
+   1268a:	02061313          	slli	t1,a2,0x20
+   1268e:	02065e93          	srli	t4,a2,0x20
+   12692:	01f63633          	sltu	a2,a2,t6
+   12696:	1602                	slli	a2,a2,0x20
+   12698:	02a70533          	mul	a0,a4,a0
+   1269c:	9876                	add	a6,a6,t4
+   1269e:	9642                	add	a2,a2,a6
+   126a0:	00a30fb3          	add	t6,t1,a0
+			prod_low += carry;
+   126a4:	00ff8333          	add	t1,t6,a5
+			WORD_MUL(prod_high, prod_low, m, p->val[j]);
+   126a8:	00afb533          	sltu	a0,t6,a0
+			prod_high += (prod_low < carry);
+   126ac:	00f337b3          	sltu	a5,t1,a5
+			out->val[j - 1] = prod_low + out->val[j];
+   126b0:	9e1a                	add	t3,t3,t1
+			WORD_MUL(prod_high, prod_low, m, p->val[j]);
+   126b2:	962a                	add	a2,a2,a0
+			carry = prod_high + (out->val[j - 1] < prod_low);
+   126b4:	006e3333          	sltu	t1,t3,t1
+			prod_high += (prod_low < carry);
+   126b8:	97b2                	add	a5,a5,a2
+			out->val[j - 1] = prod_low + out->val[j];
+   126ba:	01c43c23          	sd	t3,24(s0)
+			carry = prod_high + (out->val[j - 1] < prod_low);
+   126be:	979a                	add	a5,a5,t1
+		for (j = 1; j < len; j++) {
+   126c0:	27688963          	beq	a7,s6,12932 <_nn_mul_redc1+0x768>
+			WORD_MUL(prod_high, prod_low, m, p->val[j]);
+   126c4:	02893603          	ld	a2,40(s2)
+			out->val[j - 1] = prod_low + out->val[j];
+   126c8:	02843e83          	ld	t4,40(s0)
+			WORD_MUL(prod_high, prod_low, m, p->val[j]);
+   126cc:	02065e13          	srli	t3,a2,0x20
+   126d0:	01e67633          	and	a2,a2,t5
+   126d4:	02ee0fb3          	mul	t6,t3,a4
+   126d8:	02d60533          	mul	a0,a2,a3
+   126dc:	02de0e33          	mul	t3,t3,a3
+   126e0:	957e                	add	a0,a0,t6
+   126e2:	02051313          	slli	t1,a0,0x20
+   126e6:	02055813          	srli	a6,a0,0x20
+   126ea:	01f53533          	sltu	a0,a0,t6
+   126ee:	1502                	slli	a0,a0,0x20
+   126f0:	02e60633          	mul	a2,a2,a4
+   126f4:	9872                	add	a6,a6,t3
+   126f6:	9542                	add	a0,a0,a6
+   126f8:	00c30fb3          	add	t6,t1,a2
+			prod_low += carry;
+   126fc:	01f78333          	add	t1,a5,t6
+			WORD_MUL(prod_high, prod_low, m, p->val[j]);
+   12700:	00cfb633          	sltu	a2,t6,a2
+			prod_high += (prod_low < carry);
+   12704:	00f337b3          	sltu	a5,t1,a5
+			out->val[j - 1] = prod_low + out->val[j];
+   12708:	9e9a                	add	t4,t4,t1
+			WORD_MUL(prod_high, prod_low, m, p->val[j]);
+   1270a:	962a                	add	a2,a2,a0
+			prod_high += (prod_low < carry);
+   1270c:	97b2                	add	a5,a5,a2
+			carry = prod_high + (out->val[j - 1] < prod_low);
+   1270e:	006eb333          	sltu	t1,t4,t1
+			out->val[j - 1] = prod_low + out->val[j];
+   12712:	03d43023          	sd	t4,32(s0)
+		for (j = 1; j < len; j++) {
+   12716:	4619                	li	a2,6
+			carry = prod_high + (out->val[j - 1] < prod_low);
+   12718:	979a                	add	a5,a5,t1
+		for (j = 1; j < len; j++) {
+   1271a:	20c88c63          	beq	a7,a2,12932 <_nn_mul_redc1+0x768>
+			WORD_MUL(prod_high, prod_low, m, p->val[j]);
+   1271e:	03093603          	ld	a2,48(s2)
+			out->val[j - 1] = prod_low + out->val[j];
+   12722:	03043e83          	ld	t4,48(s0)
+			WORD_MUL(prod_high, prod_low, m, p->val[j]);
+   12726:	02065e13          	srli	t3,a2,0x20
+   1272a:	01e67633          	and	a2,a2,t5
+   1272e:	03c70fb3          	mul	t6,a4,t3
+   12732:	02c68833          	mul	a6,a3,a2
+   12736:	03c68e33          	mul	t3,a3,t3
+   1273a:	987e                	add	a6,a6,t6
+   1273c:	02081313          	slli	t1,a6,0x20
+   12740:	02085513          	srli	a0,a6,0x20
+   12744:	01f83833          	sltu	a6,a6,t6
+   12748:	1802                	slli	a6,a6,0x20
+   1274a:	02c70633          	mul	a2,a4,a2
+   1274e:	9572                	add	a0,a0,t3
+   12750:	9542                	add	a0,a0,a6
+   12752:	00c30fb3          	add	t6,t1,a2
+			prod_low += carry;
+   12756:	01f78333          	add	t1,a5,t6
+			WORD_MUL(prod_high, prod_low, m, p->val[j]);
+   1275a:	00cfb633          	sltu	a2,t6,a2
+			prod_high += (prod_low < carry);
+   1275e:	00f337b3          	sltu	a5,t1,a5
+			out->val[j - 1] = prod_low + out->val[j];
+   12762:	9e9a                	add	t4,t4,t1
+			WORD_MUL(prod_high, prod_low, m, p->val[j]);
+   12764:	962a                	add	a2,a2,a0
+			prod_high += (prod_low < carry);
+   12766:	97b2                	add	a5,a5,a2
+			carry = prod_high + (out->val[j - 1] < prod_low);
+   12768:	006eb333          	sltu	t1,t4,t1
+			out->val[j - 1] = prod_low + out->val[j];
+   1276c:	03d43423          	sd	t4,40(s0)
+		for (j = 1; j < len; j++) {
+   12770:	461d                	li	a2,7
+			carry = prod_high + (out->val[j - 1] < prod_low);
+   12772:	979a                	add	a5,a5,t1
+		for (j = 1; j < len; j++) {
+   12774:	1ac88f63          	beq	a7,a2,12932 <_nn_mul_redc1+0x768>
+			WORD_MUL(prod_high, prod_low, m, p->val[j]);
+   12778:	03893603          	ld	a2,56(s2)
+			out->val[j - 1] = prod_low + out->val[j];
+   1277c:	03843e83          	ld	t4,56(s0)
+			WORD_MUL(prod_high, prod_low, m, p->val[j]);
+   12780:	02065e13          	srli	t3,a2,0x20
+   12784:	01e67633          	and	a2,a2,t5
+   12788:	03c70fb3          	mul	t6,a4,t3
+   1278c:	02c68833          	mul	a6,a3,a2
+   12790:	03c68e33          	mul	t3,a3,t3
+   12794:	987e                	add	a6,a6,t6
+   12796:	02081313          	slli	t1,a6,0x20
+   1279a:	02085513          	srli	a0,a6,0x20
+   1279e:	01f83833          	sltu	a6,a6,t6
+   127a2:	1802                	slli	a6,a6,0x20
+   127a4:	02c70633          	mul	a2,a4,a2
+   127a8:	9572                	add	a0,a0,t3
+   127aa:	9542                	add	a0,a0,a6
+   127ac:	00c30fb3          	add	t6,t1,a2
+			prod_low += carry;
+   127b0:	01f78333          	add	t1,a5,t6
+			WORD_MUL(prod_high, prod_low, m, p->val[j]);
+   127b4:	00cfb633          	sltu	a2,t6,a2
+			prod_high += (prod_low < carry);
+   127b8:	00f337b3          	sltu	a5,t1,a5
+			out->val[j - 1] = prod_low + out->val[j];
+   127bc:	9e9a                	add	t4,t4,t1
+			WORD_MUL(prod_high, prod_low, m, p->val[j]);
+   127be:	962a                	add	a2,a2,a0
+			prod_high += (prod_low < carry);
+   127c0:	97b2                	add	a5,a5,a2
+			carry = prod_high + (out->val[j - 1] < prod_low);
+   127c2:	006eb333          	sltu	t1,t4,t1
+			out->val[j - 1] = prod_low + out->val[j];
+   127c6:	03d43823          	sd	t4,48(s0)
+		for (j = 1; j < len; j++) {
+   127ca:	4621                	li	a2,8
+			carry = prod_high + (out->val[j - 1] < prod_low);
+   127cc:	979a                	add	a5,a5,t1
+		for (j = 1; j < len; j++) {
+   127ce:	16c88263          	beq	a7,a2,12932 <_nn_mul_redc1+0x768>
+			WORD_MUL(prod_high, prod_low, m, p->val[j]);
+   127d2:	04093603          	ld	a2,64(s2)
+			out->val[j - 1] = prod_low + out->val[j];
+   127d6:	04043e83          	ld	t4,64(s0)
+			WORD_MUL(prod_high, prod_low, m, p->val[j]);
+   127da:	02065e13          	srli	t3,a2,0x20
+   127de:	01e67633          	and	a2,a2,t5
+   127e2:	03c70fb3          	mul	t6,a4,t3
+   127e6:	02c68833          	mul	a6,a3,a2
+   127ea:	03c68e33          	mul	t3,a3,t3
+   127ee:	987e                	add	a6,a6,t6
+   127f0:	02081313          	slli	t1,a6,0x20
+   127f4:	02085513          	srli	a0,a6,0x20
+   127f8:	01f83833          	sltu	a6,a6,t6
+   127fc:	1802                	slli	a6,a6,0x20
+   127fe:	02c70633          	mul	a2,a4,a2
+   12802:	9572                	add	a0,a0,t3
+   12804:	9542                	add	a0,a0,a6
+   12806:	00c30fb3          	add	t6,t1,a2
+			prod_low += carry;
+   1280a:	01f78333          	add	t1,a5,t6
+			WORD_MUL(prod_high, prod_low, m, p->val[j]);
+   1280e:	00cfb633          	sltu	a2,t6,a2
+			prod_high += (prod_low < carry);
+   12812:	00f337b3          	sltu	a5,t1,a5
+			out->val[j - 1] = prod_low + out->val[j];
+   12816:	9e9a                	add	t4,t4,t1
+			WORD_MUL(prod_high, prod_low, m, p->val[j]);
+   12818:	962a                	add	a2,a2,a0
+			prod_high += (prod_low < carry);
+   1281a:	97b2                	add	a5,a5,a2
+			carry = prod_high + (out->val[j - 1] < prod_low);
+   1281c:	006eb333          	sltu	t1,t4,t1
+			out->val[j - 1] = prod_low + out->val[j];
+   12820:	03d43c23          	sd	t4,56(s0)
+		for (j = 1; j < len; j++) {
+   12824:	4625                	li	a2,9
+			carry = prod_high + (out->val[j - 1] < prod_low);
+   12826:	979a                	add	a5,a5,t1
+		for (j = 1; j < len; j++) {
+   12828:	10c88563          	beq	a7,a2,12932 <_nn_mul_redc1+0x768>
+			WORD_MUL(prod_high, prod_low, m, p->val[j]);
+   1282c:	04893603          	ld	a2,72(s2)
+			out->val[j - 1] = prod_low + out->val[j];
+   12830:	04843e83          	ld	t4,72(s0)
+			WORD_MUL(prod_high, prod_low, m, p->val[j]);
+   12834:	02065e13          	srli	t3,a2,0x20
+   12838:	01e67633          	and	a2,a2,t5
+   1283c:	03c70fb3          	mul	t6,a4,t3
+   12840:	02c68833          	mul	a6,a3,a2
+   12844:	03c68e33          	mul	t3,a3,t3
+   12848:	987e                	add	a6,a6,t6
+   1284a:	02081313          	slli	t1,a6,0x20
+   1284e:	02085513          	srli	a0,a6,0x20
+   12852:	01f83833          	sltu	a6,a6,t6
+   12856:	1802                	slli	a6,a6,0x20
+   12858:	02c70633          	mul	a2,a4,a2
+   1285c:	9572                	add	a0,a0,t3
+   1285e:	9542                	add	a0,a0,a6
+   12860:	00c30fb3          	add	t6,t1,a2
+			prod_low += carry;
+   12864:	01f78333          	add	t1,a5,t6
+			WORD_MUL(prod_high, prod_low, m, p->val[j]);
+   12868:	00cfb633          	sltu	a2,t6,a2
+			prod_high += (prod_low < carry);
+   1286c:	00f337b3          	sltu	a5,t1,a5
+			out->val[j - 1] = prod_low + out->val[j];
+   12870:	9e9a                	add	t4,t4,t1
+			WORD_MUL(prod_high, prod_low, m, p->val[j]);
+   12872:	962a                	add	a2,a2,a0
+			prod_high += (prod_low < carry);
+   12874:	97b2                	add	a5,a5,a2
+			carry = prod_high + (out->val[j - 1] < prod_low);
+   12876:	006eb333          	sltu	t1,t4,t1
+			out->val[j - 1] = prod_low + out->val[j];
+   1287a:	05d43023          	sd	t4,64(s0)
+		for (j = 1; j < len; j++) {
+   1287e:	4629                	li	a2,10
+			carry = prod_high + (out->val[j - 1] < prod_low);
+   12880:	979a                	add	a5,a5,t1
+		for (j = 1; j < len; j++) {
+   12882:	0ac88863          	beq	a7,a2,12932 <_nn_mul_redc1+0x768>
+			WORD_MUL(prod_high, prod_low, m, p->val[j]);
+   12886:	05093603          	ld	a2,80(s2)
+			out->val[j - 1] = prod_low + out->val[j];
+   1288a:	05043e83          	ld	t4,80(s0)
+			WORD_MUL(prod_high, prod_low, m, p->val[j]);
+   1288e:	02065e13          	srli	t3,a2,0x20
+   12892:	01e67633          	and	a2,a2,t5
+   12896:	03c70fb3          	mul	t6,a4,t3
+   1289a:	02c68833          	mul	a6,a3,a2
+   1289e:	03c68e33          	mul	t3,a3,t3
+   128a2:	987e                	add	a6,a6,t6
+   128a4:	02081313          	slli	t1,a6,0x20
+   128a8:	02085513          	srli	a0,a6,0x20
+   128ac:	01f83833          	sltu	a6,a6,t6
+   128b0:	1802                	slli	a6,a6,0x20
+   128b2:	02c70633          	mul	a2,a4,a2
+   128b6:	9572                	add	a0,a0,t3
+   128b8:	9542                	add	a0,a0,a6
+   128ba:	00c30fb3          	add	t6,t1,a2
+			prod_low += carry;
+   128be:	01f78333          	add	t1,a5,t6
+			WORD_MUL(prod_high, prod_low, m, p->val[j]);
+   128c2:	00cfb633          	sltu	a2,t6,a2
+			prod_high += (prod_low < carry);
+   128c6:	00f337b3          	sltu	a5,t1,a5
+			out->val[j - 1] = prod_low + out->val[j];
+   128ca:	9e9a                	add	t4,t4,t1
+			WORD_MUL(prod_high, prod_low, m, p->val[j]);
+   128cc:	962a                	add	a2,a2,a0
+			prod_high += (prod_low < carry);
+   128ce:	97b2                	add	a5,a5,a2
+			carry = prod_high + (out->val[j - 1] < prod_low);
+   128d0:	006eb333          	sltu	t1,t4,t1
+			out->val[j - 1] = prod_low + out->val[j];
+   128d4:	05d43423          	sd	t4,72(s0)
+		for (j = 1; j < len; j++) {
+   128d8:	462d                	li	a2,11
+			carry = prod_high + (out->val[j - 1] < prod_low);
+   128da:	979a                	add	a5,a5,t1
+		for (j = 1; j < len; j++) {
+   128dc:	04c88b63          	beq	a7,a2,12932 <_nn_mul_redc1+0x768>
+			WORD_MUL(prod_high, prod_low, m, p->val[j]);
+   128e0:	05893503          	ld	a0,88(s2)
+			out->val[j - 1] = prod_low + out->val[j];
+   128e4:	05843303          	ld	t1,88(s0)
+			WORD_MUL(prod_high, prod_low, m, p->val[j]);
+   128e8:	02055813          	srli	a6,a0,0x20
+   128ec:	01e57533          	and	a0,a0,t5
+   128f0:	03070e33          	mul	t3,a4,a6
+   128f4:	02a68633          	mul	a2,a3,a0
+   128f8:	03068833          	mul	a6,a3,a6
+   128fc:	9672                	add	a2,a2,t3
+   128fe:	02061e93          	slli	t4,a2,0x20
+   12902:	02a70533          	mul	a0,a4,a0
+   12906:	02065713          	srli	a4,a2,0x20
+   1290a:	01c63633          	sltu	a2,a2,t3
+   1290e:	1602                	slli	a2,a2,0x20
+   12910:	9742                	add	a4,a4,a6
+   12912:	9732                	add	a4,a4,a2
+   12914:	9eaa                	add	t4,t4,a0
+			prod_low += carry;
+   12916:	00fe86b3          	add	a3,t4,a5
+			WORD_MUL(prod_high, prod_low, m, p->val[j]);
+   1291a:	00aeb533          	sltu	a0,t4,a0
+			prod_high += (prod_low < carry);
+   1291e:	00f6b7b3          	sltu	a5,a3,a5
+			out->val[j - 1] = prod_low + out->val[j];
+   12922:	9336                	add	t1,t1,a3
+			WORD_MUL(prod_high, prod_low, m, p->val[j]);
+   12924:	972a                	add	a4,a4,a0
+			carry = prod_high + (out->val[j - 1] < prod_low);
+   12926:	00d336b3          	sltu	a3,t1,a3
+			prod_high += (prod_low < carry);
+   1292a:	97ba                	add	a5,a5,a4
+			out->val[j - 1] = prod_low + out->val[j];
+   1292c:	04643823          	sd	t1,80(s0)
+			carry = prod_high + (out->val[j - 1] < prod_low);
+   12930:	97b6                	add	a5,a5,a3
+		for (j = 1; j < len; j++) {
+   12932:	86e6                	mv	a3,s9
+		for (; j < len; j++) {
+   12934:	8746                	mv	a4,a7
+		}
+		out->val[j - 1] = carry + out->val[j];
+   12936:	070e                	slli	a4,a4,0x3
+   12938:	9722                	add	a4,a4,s0
+   1293a:	6310                	ld	a2,0(a4)
+   1293c:	1682                	slli	a3,a3,0x20
+   1293e:	82f5                	srli	a3,a3,0x1d
+   12940:	97b2                	add	a5,a5,a2
+   12942:	96a2                	add	a3,a3,s0
+   12944:	e29c                	sd	a5,0(a3)
+		carry = out->val[j - 1] < out->val[j];
+   12946:	6314                	ld	a3,0(a4)
+	for (i = 0; i < len; i++) {
+   12948:	2a05                	addiw	s4,s4,1
+   1294a:	02a1                	addi	t0,t0,8
+		carry = out->val[j - 1] < out->val[j];
+   1294c:	00d7b7b3          	sltu	a5,a5,a3
+		out->val[j] = acc + carry;
+   12950:	97ae                	add	a5,a5,a1
+   12952:	e31c                	sd	a5,0(a4)
+	for (i = 0; i < len; i++) {
+   12954:	991a6ee3          	bltu	s4,a7,122f0 <_nn_mul_redc1+0x126>
+	}
+	/*
+	 * Note that at this stage the msw of out is either 0 or 1.
+	 * If out > p we need to subtract p from out.
+	 */
+	nn_cnd_sub(nn_cmp(out, p) >= 0, out, out, p);
+   12958:	85ca                	mv	a1,s2
+   1295a:	8522                	mv	a0,s0
+   1295c:	980fe0ef          	jal	ra,10adc <nn_cmp>
+   12960:	fff54513          	not	a0,a0
+   12964:	85a2                	mv	a1,s0
+   12966:	01f5551b          	srliw	a0,a0,0x1f
+   1296a:	86ca                	mv	a3,s2
+   1296c:	8622                	mv	a2,s0
+   1296e:	674000ef          	jal	ra,12fe2 <nn_cnd_sub>
+	MUST_HAVE(nn_cmp(out, p) < 0);
+   12972:	85ca                	mv	a1,s2
+   12974:	8522                	mv	a0,s0
+   12976:	966fe0ef          	jal	ra,10adc <nn_cmp>
+   1297a:	00054763          	bltz	a0,12988 <_nn_mul_redc1+0x7be>
+   1297e:	a001                	j	1297e <_nn_mul_redc1+0x7b4>
+	MUST_HAVE(NN_MAX_BIT_LEN >= (WORD_BITS * (out->wlen + 1)));
+   12980:	a001                	j	12980 <_nn_mul_redc1+0x7b6>
+		for (j = 1; j < len; j++) {
+   12982:	4681                	li	a3,0
+   12984:	4705                	li	a4,1
+   12986:	bf45                	j	12936 <_nn_mul_redc1+0x76c>
+	/* We restore out wlen. */
+	out->wlen -= 1;
+   12988:	06844783          	lbu	a5,104(s0)
+   1298c:	37fd                	addiw	a5,a5,-1
+   1298e:	06f40423          	sb	a5,104(s0)
+}
+   12992:	70a6                	ld	ra,104(sp)
+   12994:	7406                	ld	s0,96(sp)
+   12996:	64e6                	ld	s1,88(sp)
+   12998:	6946                	ld	s2,80(sp)
+   1299a:	69a6                	ld	s3,72(sp)
+   1299c:	6a06                	ld	s4,64(sp)
+   1299e:	7ae2                	ld	s5,56(sp)
+   129a0:	7b42                	ld	s6,48(sp)
+   129a2:	7ba2                	ld	s7,40(sp)
+   129a4:	7c02                	ld	s8,32(sp)
+   129a6:	6ce2                	ld	s9,24(sp)
+   129a8:	6d42                	ld	s10,16(sp)
+   129aa:	6da2                	ld	s11,8(sp)
+   129ac:	6165                	addi	sp,sp,112
+   129ae:	8082                	ret

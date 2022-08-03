@@ -1,3 +1,7 @@
+We optimize the libecc's verification process of secp256r1 signatures based on [lay2dev's work](https://github.com/lay2dev/libecc).
+The result is that instruction count for running secp256r1 signature verification is reduced to 13.7M from 28.4M.
+The code used here is avaiable from [libecc at benchmark-signature-verification](https://github.com/contrun/libecc/tree/benchmark-signature-verification).
+
 # base line
 The benchmark program [secp256r1_blake160_sighash_lay2dev_bench.c](https://github.com/contrun/ckb-miscellaneous-scripts/blob/f954617efcbed7d0aa90086e6d20d3192a1c73b2/c/secp256r1_blake160_sighash_lay2dev_bench.c)
 is compiled with `make LIBECC_PATH=/workspace/libecc build/secp256r1_blake160_sighash_lay2dev_bench` using [this Makefile](https://github.com/contrun/ckb-miscellaneous-scripts/blob/f954617efcbed7d0aa90086e6d20d3192a1c73b2/Makefile). The toolchain (contained in a fixed docker image) and compiler flags used are availble in the Makefile, and the libecc commit is [7dbef0ec902db95d4e515b4d9ef15d203f31c243](https://github.com/contrun/libecc/tree/7dbef0ec902db95d4e515b4d9ef15d203f31c243).
@@ -181,6 +185,12 @@ fp_init: 1 %
 nn_uninit: 1 %
 nn_mul_redc1: 0 %
 ```
+
+# macro operation fusion for `_nn_mul_redc1`
+Since `_nn_mul_redc1` is such a costly function, we try to optimize it with [Macro-Operation Fusion (MOP Fusion)](https://en.wikichip.org/wiki/macro-operation_fusion).
+We first inspect [all the micro operation patterns that ckb-vm supports](https://github.com/nervosnetwork/rfcs/blob/master/rfcs/0033-ckb-vm-version-1/0033-ckb-vm-version-1.md#42-mop).
+We then compare it with [the disassembly code of `_nn_mul_redc1`](_nn_mul_redc1.source.disasm). Unfortunately, the generated code is not readily
+MOP-fustion-optimizable. Instead, we try another Montgomery multiplication implementation which is already MOP-fusion-friendly.
 
 # replacing Montgomery multiplication implementation
 
