@@ -17,11 +17,13 @@ CKB_VM_CLI := ckb-vm-b-cli
 
 LIBECC_PATH := deps/libecc
 CFLAGS_LIBECC := -fno-builtin -DWORDSIZE=64 -DWITH_STDLIB -DWITH_BLANK_EXTERNAL_DEPENDENCIES -fPIC -g -O3
-ifeq ($(LIBECC_WITH_LL_U256_MONT),1)
-CFLAGS_LIBECC += -DWITH_LL_U256_MONT
-endif
 CFLAGS_LINK_TO_LIBECC := -fno-builtin -DWORDSIZE=64 -DWITH_STDLIB -DWITH_BLANK_EXTERNAL_DEPENDENCIES -fno-builtin-printf -I ${LIBECC_PATH}/src -I ${LIBECC_PATH}/src/external_deps
 LIBECC_FILES := ${LIBECC_PATH}/build/libarith.a ${LIBECC_PATH}/build/libec.a ${LIBECC_PATH}/build/libsign.a
+
+LIBECC_OPTIMIZED_PATH := deps/libecc-optimized
+LIBECC_OPTIMIZED_FILES := ${LIBECC_OPTIMIZED_PATH}/build/libarith.a ${LIBECC_OPTIMIZED_PATH}/build/libec.a ${LIBECC_OPTIMIZED_PATH}/build/libsign.a
+CFLAGS_LIBECC_OPTIMIZED = $(CFLAGS_LIBECC) -DWITH_LL_U256_MONT
+CFLAGS_LINK_TO_LIBECC_OPTIMIZED := -fno-builtin -DWORDSIZE=64 -DWITH_STDLIB -DWITH_BLANK_EXTERNAL_DEPENDENCIES -fno-builtin-printf -I ${LIBECC_OPTIMIZED_PATH}/src -I ${LIBECC_OPTIMIZED_PATH}/src/external_deps
 
 MOLC := moleculec
 MOLC_VERSION := 0.7.0
@@ -31,7 +33,7 @@ DOCKER_EXTRA_FLAGS ?=
 # docker pull nervos/ckb-riscv-gnu-toolchain:gnu-bionic-20191012
 BUILDER_DOCKER := nervos/ckb-riscv-gnu-toolchain@sha256:aae8a3f79705f67d505d1f1d5ddc694a4fd537ed1c7e9622420a470d59ba2ec3
 
-all: build/htlc build/secp256k1_blake2b_sighash_all_lib.so build/or build/simple_udt build/secp256k1_blake2b_sighash_all_dual build/and build/open_transaction build/rsa_sighash_all blst-demo deps/libecc build/secp256r1_blake160_sighash_all build/secp256r1_blake160_c
+all: build/htlc build/secp256k1_blake2b_sighash_all_lib.so build/or build/simple_udt build/secp256k1_blake2b_sighash_all_dual build/and build/open_transaction build/rsa_sighash_all blst-demo deps/libecc deps/libecc-optimized build/secp256r1_blake160_sighash_all build/secp256r1_blake160_c build/secp256r1_blake160_sighash_bench build/secp256r1_blake160_sighash_lay2dev_bench
 
 docker-interactive:
 	docker run --user ${DOCKER_USER} --rm -it -v "${CURRENT_DIR}:/code" --workdir /code --entrypoint /bin/bash ${DOCKER_EXTRA_FLAGS} ${BUILDER_DOCKER}
@@ -47,13 +49,14 @@ build/htlc: c/htlc.c build/secp256k1_blake2b_sighash_all_lib.h
 build/secp256k1_blake2b_sighash_all_lib.h: build/generate_data_hash build/secp256k1_blake2b_sighash_all_lib.so
 	$< build/secp256k1_blake2b_sighash_all_lib.so secp256k1_blake2b_sighash_all_data_hash > $@
 
+# Benchmark for secp256r1 signature verification based on a newer libecc
 build/secp256r1_blake160_sighash_bench: c/secp256r1_blake160_sighash_bench.c c/common.h c/secp256r1_helper.h libecc
 	$(CC) $(CFLAGS) $(CFLAGS_LINK_TO_LIBECC) $(LDFLAGS) -o $@ $< ${LIBECC_FILES}
 	$(OBJCOPY) --only-keep-debug $@ $@.debug
 	$(OBJCOPY) --strip-debug --strip-all $@
 
-build/libecc_nn_mul_redc1: c/libecc_nn_mul_redc1.c c/common.h c/secp256r1_helper.h libecc
-	$(CC) $(CFLAGS) $(CFLAGS_LINK_TO_LIBECC) $(LDFLAGS) -o $@ $< ${LIBECC_FILES}
+build/libecc_nn_mul_redc1: c/libecc_nn_mul_redc1.c c/common.h c/secp256r1_helper.h libecc-optimized
+	$(CC) $(CFLAGS) $(CFLAGS_LINK_TO_LIBECC) $(LDFLAGS) -o $@ $< ${LIBECC_OPTIMIZED_FILES}
 	$(OBJCOPY) --only-keep-debug $@ $@.debug
 	$(OBJCOPY) --strip-debug --strip-all $@
 
@@ -66,8 +69,9 @@ build/ll_u256_mont_mul.o: c/ll_u256_mont_mul.c
 build/ll_u256_mont_mul: build/ll_u256_mont-riscv64.o build/ll_u256_mont_mul.o
 	$(CC) -fno-builtin-printf -fno-builtin-memcmp $(CFLAGS) $(LDFLAGS) -o $@ $^
 
-build/secp256r1_blake160_sighash_lay2dev_bench: c/secp256r1_blake160_sighash_bench.c libecc
-	$(CC) $(CFLAGS) $(CFLAGS_LINK_TO_LIBECC) $(LDFLAGS) -o $@ c/secp256r1_blake160_sighash_lay2dev_bench.c ${LIBECC_FILES}
+# Benchmark for secp256r1 signature verification based on a older libecc from lay2dev (with some improvements)
+build/secp256r1_blake160_sighash_lay2dev_bench: c/secp256r1_blake160_sighash_bench.c libecc-optimized
+	$(CC) $(CFLAGS) $(CFLAGS_LINK_TO_LIBECC_OPTIMIZED) $(LDFLAGS) -o $@ c/secp256r1_blake160_sighash_lay2dev_bench.c ${LIBECC_OPTIMIZED_FILES}
 	$(OBJCOPY) --only-keep-debug $@ $@.debug
 	$(OBJCOPY) --strip-debug --strip-all $@ $@.stripped
 
@@ -122,6 +126,9 @@ build/simple_udt: c/simple_udt.c
 
 libecc:
 	make -C ${LIBECC_PATH} CC=${CC} LD=${LD} CFLAGS="$(CFLAGS_LIBECC)"
+
+libecc-optimized:
+	make -C ${LIBECC_OPTIMIZED_PATH} LIBECC_WITH_LL_U256_MONT=1 CC=${CC} LD=${LD} CFLAGS="$(CFLAGS_LIBECC_OPTIMIZED)"
 
 deps/mbedtls/library/libmbedcrypto.a:
 	cp deps/mbedtls-config-template.h deps/mbedtls/include/mbedtls/config.h
@@ -213,6 +220,7 @@ clean:
 	make -C deps/secp256k1 clean || true
 	make -C deps/mbedtls/library clean
 	make -C ${LIBECC_PATH} clean
+	make -C ${LIBECC_OPTIMIZED_PATH} clean
 	rm -f build/rsa_sighash_all
 	rm -f build/blst* build/server.o build/server-asm.o
 	rm -f build/ll_u256_mont*
