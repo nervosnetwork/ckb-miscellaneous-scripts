@@ -1,6 +1,7 @@
 We optimize the libecc's verification process of secp256r1 signatures based on [lay2dev's work](https://github.com/lay2dev/libecc).
 The result is that instruction count for running secp256r1 signature verification is reduced to 13.7M from 28.4M.
-The code used here is avaiable from [libecc at benchmark-signature-verification](https://github.com/contrun/libecc/tree/benchmark-signature-verification).
+The number 13.7M can be obtained by running `ckb-debugger --bin ./build/secp256r1_blake160_sighash_lay2dev_bench`, where `./build/secp256r1_blake160_sighash_lay2dev_bench` is built by the
+Makefile target with the same name and it uses libecc code from submodule `deps/libecc-optimized`.
 
 # base line
 The benchmark program [secp256r1_blake160_sighash_lay2dev_bench.c](https://github.com/contrun/ckb-miscellaneous-scripts/blob/f954617efcbed7d0aa90086e6d20d3192a1c73b2/c/secp256r1_blake160_sighash_lay2dev_bench.c)
