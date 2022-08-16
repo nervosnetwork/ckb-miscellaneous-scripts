@@ -19,3 +19,7 @@
 	path = deps/libecc
 	url = https://github.com/contrun/libecc.git
 	branch = blank_external_dependencies
+[submodule "deps/libecc-optimized"]
+	path = deps/libecc-optimized
+	url = https://github.com/contrun/libecc.git
+	branch = benchmark-signature-verification
