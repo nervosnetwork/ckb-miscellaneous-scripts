@@ -95,36 +95,110 @@
 // object in molecule serialization format. The lock field of said WitnessArgs
 // object should contain a 65-byte recoverable signature to prove ownership.
 
-typedef struct {
-} secp256r1_context_t;
+static const char *ec_name = "SECP256R1";
 
-int secp256r1_context_init(secp256r1_context_t *context) {
-  (void)context;
-  return -42;
+static const char *ec_sig_name = "ECDSA";
+
+static const char *hash_algorithm = "SHA256";
+
+int get_random(unsigned char *buf, u16 len) {
+  for (int i = 0; i < len; i++) {
+    buf[i] = 0;
+  }
+  return 0;
 }
 
-int secp256r1_pub_key_import_from_aff_buf(const secp256r1_context_t *context,
-                                          ec_pub_key *pub_key,
-                                          const u8 *pub_key_buf,
-                                          u8 pub_key_buf_len) {
-  (void)context;
-  (void)pub_key;
-  (void)pub_key_buf;
-  (void)pub_key_buf_len;
-  return -42;
+static int string_to_params(const char *ec_name, const char *ec_sig_name,
+                            ec_sig_alg_type *sig_type,
+                            const ec_str_params **ec_str_p,
+                            const char *hash_name, hash_alg_type *hash_type) {
+  const ec_str_params *curve_params;
+  const ec_sig_mapping *sm;
+  const hash_mapping *hm;
+  u32 curve_name_len;
+
+  if (sig_type != NULL) {
+    /* Get sig type from signature alg name */
+    sm = get_sig_by_name(ec_sig_name);
+    if (!sm) {
+      printf("Error: signature type %s is unknown!\n", ec_sig_name);
+      goto err;
+    }
+    *sig_type = sm->type;
+  }
+
+  if (ec_str_p != NULL) {
+    /* Get curve params from curve name */
+    curve_name_len = local_strlen((const char *)ec_name) + 1;
+    if (curve_name_len > 255) {
+      /* Sanity check */
+      goto err;
+    }
+    curve_params =
+        ec_get_curve_params_by_name((const u8 *)ec_name, (u8)curve_name_len);
+    if (!curve_params) {
+      printf("Error: EC curve %s is unknown!\n", ec_name);
+      goto err;
+    }
+    *ec_str_p = curve_params;
+  }
+
+  if (hash_type != NULL) {
+    /* Get hash type from hash alg name */
+    hm = get_hash_by_name(hash_name);
+    if (!hm) {
+      printf("Error: hash function %s is unknown!\n", hash_name);
+      goto err;
+    }
+    *hash_type = hm->type;
+  }
+
+  return 0;
+
+err:
+  return -1;
 }
 
-int secp256r1_verify_signature(const secp256r1_context_t *context,
-                               const u8 *sig, u8 siglen,
-                               const ec_pub_key *pub_key, const u8 *m,
-                               u32 mlen) {
-  (void)context;
-  (void)sig;
-  (void)siglen;
-  (void)pub_key;
-  (void)m;
-  (void)mlen;
-  return -42;
+int secp256r1_verify_signature(const u8 *sig, u8 siglen, const u8 *pub_key_buf,
+                               u32 pub_key_buf_len, const u8 *m, u32 mlen) {
+  const ec_str_params *ec_str_p;
+  ec_sig_alg_type sig_type;
+  hash_alg_type hash_type;
+  ec_pub_key pub_key;
+  ec_params params;
+  int ret;
+
+  MUST_HAVE(ec_name != NULL);
+
+  /************************************/
+  /* Get parameters from pretty names */
+  ret = string_to_params(ec_name, ec_sig_name, &sig_type, &ec_str_p,
+                         hash_algorithm, &hash_type);
+  if (ret) {
+    printf("Error: error when getting ec parameter\n");
+    goto err;
+  }
+  /* Import the parameters */
+  import_params(&params, ec_str_p);
+
+  ret = ec_structured_pub_key_import_from_buf(&pub_key, &params, pub_key_buf,
+                                              pub_key_buf_len, sig_type);
+  if (ret) {
+    printf("Error: error when importing public key from\n");
+    goto err;
+  }
+
+  ret = ec_verify(sig, siglen, &pub_key, m, mlen, sig_type, hash_type);
+
+  if (ret) {
+    printf("Error: error while verifying signature\n");
+    goto err;
+  }
+
+  return 0;
+
+err:
+  return ret;
 }
 
 int main() {
@@ -154,10 +228,6 @@ int main() {
 
   mol_seg_t args_seg = MolReader_Script_get_args(&script_seg);
   mol_seg_t args_bytes_seg = MolReader_Bytes_raw_bytes(&args_seg);
-  secp256r1_context_t context;
-  if (secp256r1_context_init(&context)) {
-    return ERROR_SYSCALL;
-  }
 
   // Load the first witness, or the witness of the same index as the first
   // input using current script.
@@ -187,12 +257,6 @@ int main() {
   // We keep the signature in the temporary location, since later we will modify
   // the WitnessArgs object in place for message hashing.
   memcpy(lock_bytes, lock_bytes_seg.ptr, lock_bytes_seg.size);
-
-  ec_pub_key pub_key;
-  if (secp256r1_pub_key_import_from_aff_buf(&context, &pub_key, lock_bytes,
-                                            PUBKEY_SIZE)) {
-    return ERROR_ENCODING;
-  }
 
   blake2b_state blake2b_ctx_pk;
   unsigned char hash_result[BLAKE2B_BLOCK_SIZE];
@@ -289,8 +353,8 @@ int main() {
   // Now the message preparation is completed.
   blake2b_final(&blake2b_ctx, message, BLAKE2B_BLOCK_SIZE);
 
-  if (secp256r1_verify_signature(&context, lock_bytes + PUBKEY_SIZE,
-                                 SIGNATURE_SIZE, &pub_key, message,
+  if (secp256r1_verify_signature(lock_bytes + PUBKEY_SIZE, SIGNATURE_SIZE,
+                                 lock_bytes, PUBKEY_SIZE, message,
                                  BLAKE2B_BLOCK_SIZE)) {
     return ERROR_SECP_VERIFICATION;
   };
