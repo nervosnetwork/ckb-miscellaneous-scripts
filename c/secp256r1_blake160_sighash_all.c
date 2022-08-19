@@ -53,11 +53,13 @@
 #include <stdio.h>
 
 #include "blake2b.h"
+#include "blockchain.h"
 #include "ckb_syscalls.h"
 #include "common.h"
-#include "blockchain.h"
 
-#include "secp256r1_helper.h"
+#include "lib_ecc_types.h"
+#include "libec.h"
+#include "libsig.h"
 
 // Common definitions here, one important limitation, is that this lock script
 // only works with scripts and witnesses that are no larger than 32KB. We
@@ -93,6 +95,152 @@
 // object in molecule serialization format. The lock field of said WitnessArgs
 // object should contain a 65-byte recoverable signature to prove ownership.
 
+static const char *ec_name = "SECP256R1";
+
+static const char *ec_sig_name = "ECDSA";
+
+static const char *hash_algorithm = "SHA256";
+
+const u32 projective_buffer_size = 96;
+const u32 affine_buffer_size = 64;
+
+/* Print the buffer of a given size */
+void my_buf_print(const char *msg, const u8 *buf, u16 buflen) {
+  u32 i;
+
+  if (buf == NULL) {
+    return;
+  }
+
+  if (msg != NULL) {
+    printf("%s: ", msg);
+  }
+
+  for (i = 0; i < (u32)buflen; i++) {
+    printf("%02x", buf[i]);
+  }
+  printf("\n");
+}
+
+int get_random(unsigned char *buf, u16 len) {
+  for (int i = 0; i < len; i++) {
+    buf[i] = 0;
+  }
+  return 0;
+}
+
+static int string_to_params(const char *ec_name, const char *ec_sig_name,
+                            ec_sig_alg_type *sig_type,
+                            const ec_str_params **ec_str_p,
+                            const char *hash_name, hash_alg_type *hash_type) {
+  const ec_str_params *curve_params;
+  const ec_sig_mapping *sm;
+  const hash_mapping *hm;
+  u32 curve_name_len;
+
+  if (sig_type != NULL) {
+    /* Get sig type from signature alg name */
+    sm = get_sig_by_name(ec_sig_name);
+    if (!sm) {
+      printf("Error: signature type %s is unknown!\n", ec_sig_name);
+      goto err;
+    }
+    *sig_type = sm->type;
+  }
+
+  if (ec_str_p != NULL) {
+    /* Get curve params from curve name */
+    curve_name_len = local_strlen((const char *)ec_name) + 1;
+    if (curve_name_len > 255) {
+      /* Sanity check */
+      goto err;
+    }
+    curve_params =
+        ec_get_curve_params_by_name((const u8 *)ec_name, (u8)curve_name_len);
+    if (!curve_params) {
+      printf("Error: EC curve %s is unknown!\n", ec_name);
+      goto err;
+    }
+    *ec_str_p = curve_params;
+  }
+
+  if (hash_type != NULL) {
+    /* Get hash type from hash alg name */
+    hm = get_hash_by_name(hash_name);
+    if (!hm) {
+      printf("Error: hash function %s is unknown!\n", hash_name);
+      goto err;
+    }
+    *hash_type = hm->type;
+  }
+
+  return 0;
+
+err:
+  return -1;
+}
+
+void convert_aff_buf_to_prj_buf(const u8 *aff_buf, u32 aff_buf_len, u8 *prj_buf,
+                                u32 prj_buf_len) {
+  static const u8 z_buf[] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01};
+  MUST_HAVE(aff_buf_len == affine_buffer_size);
+  MUST_HAVE(prj_buf_len == projective_buffer_size);
+  memcpy(prj_buf, aff_buf, aff_buf_len);
+  memcpy(prj_buf + aff_buf_len, z_buf, sizeof(z_buf));
+}
+
+int verify_signature(const u8 *sig, u8 siglen, const u8 *pk, u32 pklen,
+                     const u8 *m, u32 mlen) {
+  const ec_str_params *ec_str_p;
+  ec_sig_alg_type sig_type;
+  hash_alg_type hash_type;
+  ec_pub_key pub_key;
+  ec_params params;
+  int ret;
+
+  // ec_pub_key_import_from_buf requires a buffer which represents the
+  // projective point of the public key, the parameter passed to here is an
+  // affine buffer. We convert the affine buffer to projective buffer here.
+  u8 pj_pk_buf[projective_buffer_size];
+  convert_aff_buf_to_prj_buf(pk, pklen, pj_pk_buf, sizeof(pj_pk_buf));
+
+  MUST_HAVE(ec_name != NULL);
+
+  /************************************/
+  /* Get parameters from pretty names */
+  ret = string_to_params(ec_name, ec_sig_name, &sig_type, &ec_str_p,
+                         hash_algorithm, &hash_type);
+  if (ret) {
+    printf("Error: error when getting ec parameter\n");
+    goto err;
+  }
+  /* Import the parameters */
+  import_params(&params, ec_str_p);
+
+  ret = ec_pub_key_import_from_buf(&pub_key, &params, pj_pk_buf,
+                                   sizeof(pj_pk_buf), sig_type);
+  if (ret) {
+    printf("Error: error when importing public key from\n");
+    goto err;
+  }
+
+  ret = ec_verify(sig, siglen, &pub_key, m, mlen, sig_type, hash_type);
+
+  if (ret) {
+    printf("Error: error while verifying signature\n");
+    goto err;
+  }
+
+  return 0;
+
+err:
+  printf("Error while verifying signature %d\n", ret);
+  return ret;
+}
+
 int main() {
   int ret;
   uint64_t len = 0;
@@ -120,10 +268,6 @@ int main() {
 
   mol_seg_t args_seg = MolReader_Script_get_args(&script_seg);
   mol_seg_t args_bytes_seg = MolReader_Bytes_raw_bytes(&args_seg);
-  secp256r1_context_t context;
-  if (secp256r1_context_init(&context)) {
-    return ERROR_SYSCALL;
-  }
 
   // Load the first witness, or the witness of the same index as the first
   // input using current script.
@@ -153,12 +297,6 @@ int main() {
   // We keep the signature in the temporary location, since later we will modify
   // the WitnessArgs object in place for message hashing.
   memcpy(lock_bytes, lock_bytes_seg.ptr, lock_bytes_seg.size);
-
-  ec_pub_key pub_key;
-  if (secp256r1_pub_key_import_from_aff_buf(&context, &pub_key, lock_bytes,
-                                            PUBKEY_SIZE)) {
-    return ERROR_ENCODING;
-  }
 
   blake2b_state blake2b_ctx_pk;
   unsigned char hash_result[BLAKE2B_BLOCK_SIZE];
@@ -255,9 +393,8 @@ int main() {
   // Now the message preparation is completed.
   blake2b_final(&blake2b_ctx, message, BLAKE2B_BLOCK_SIZE);
 
-  if (secp256r1_verify_signature(&context, lock_bytes + PUBKEY_SIZE,
-                                 SIGNATURE_SIZE, &pub_key, message,
-                                 BLAKE2B_BLOCK_SIZE)) {
+  if (verify_signature(lock_bytes + PUBKEY_SIZE, SIGNATURE_SIZE, lock_bytes,
+                       PUBKEY_SIZE, message, BLAKE2B_BLOCK_SIZE)) {
     return ERROR_SECP_VERIFICATION;
   };
 
