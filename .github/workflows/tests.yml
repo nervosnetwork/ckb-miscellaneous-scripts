@@ -19,6 +19,10 @@ jobs:
       run: cargo test
       working-directory: ./tests/secp256r1_blake160
 
+    - name: Run tests for secp256r1_blake160 rust
+      run: cargo test
+      working-directory: ./tests/sudt_lua
+
     - name: Set up ckb-vm-runner
       run: |
         cargo install --example ckb-vm-runner --branch rvv --git https://github.com/nervosnetwork/ckb-vm.git --features asm ckb-vm

@@ -36,6 +36,8 @@ const ERROR_PUBKEY_BLAKE160_HASH: i8 = -31;
 lazy_static! {
     pub static ref LUA_LOADER_BIN: Bytes =
         Bytes::from(&include_bytes!("../../../deps/ckb-lua/build/lua-loader")[..]);
+    pub static ref SECP256R1_BLAKE160_SIGHASH_ALL_BIN: Bytes =
+        Bytes::from(&include_bytes!("../../../build/secp256r1_blake160_sighash_all")[..]);
     pub static ref SUDT_LUA_BIN: Bytes =
         Bytes::from(&include_bytes!("../../../deps/ckb-lua/contracts/sudt.lua")[..]);
 }
@@ -222,7 +224,7 @@ fn create_cell(
                 .pack(),
         )
         .build();
-    let cell_data_hash = CellOutput::calc_data_hash(&LUA_LOADER_BIN);
+    let cell_data_hash = CellOutput::calc_data_hash(content);
     dummy
         .cells
         .insert(out_point.clone(), (cell, content.clone()));
@@ -237,12 +239,26 @@ fn gen_tx_with_grouped_args<R: Rng>(
     let lua_binary_out_point = get_random_out_point(rng);
     let lua_binary_cell_data_hash = create_cell(dummy, &LUA_LOADER_BIN, &lua_binary_out_point);
 
+    let lua_script_out_point = get_random_out_point(rng);
+    let lua_script_cell_data_hash = create_cell(dummy, &SUDT_LUA_BIN, &lua_binary_out_point);
+
+    let lock_script_out_point = get_random_out_point(rng);
+    let lock_script_cell_data_hash = create_cell(
+        dummy,
+        &SECP256R1_BLAKE160_SIGHASH_ALL_BIN,
+        &lock_script_out_point,
+    );
+
     // setup default tx builder
     let dummy_capacity = Capacity::shannons(42);
     let mut tx_builder = TransactionBuilder::default()
         .cell_dep(
             CellDep::new_builder()
                 .out_point(lua_binary_out_point)
+                .dep_type(DepType::Code.into())
+                .out_point(lua_script_out_point)
+                .dep_type(DepType::Code.into())
+                .out_point(lock_script_out_point)
                 .dep_type(DepType::Code.into())
                 .build(),
         )
@@ -262,14 +278,14 @@ fn gen_tx_with_grouped_args<R: Rng>(
                 buf.pack()
             };
             let previous_out_point = OutPoint::new(previous_tx_hash, 0);
-            let script = Script::new_builder()
+            let lock_script = Script::new_builder()
                 .args(args.pack())
-                .code_hash(lua_binary_cell_data_hash.clone())
+                .code_hash(lock_script_cell_data_hash.clone())
                 .hash_type(ScriptHashType::Data.into())
                 .build();
             let previous_output_cell = CellOutput::new_builder()
                 .capacity(dummy_capacity.pack())
-                .lock(script)
+                .lock(lock_script)
                 .build();
             dummy.cells.insert(
                 previous_out_point.clone(),
@@ -313,6 +329,8 @@ fn build_resolved_tx(data_loader: &DummyDataLoader, tx: &TransactionView) -> Res
         .cell_deps()
         .into_iter()
         .map(|deps_out_point| {
+            dbg!(&deps_out_point);
+            dbg!(&data_loader.cells.keys());
             let (dep_output, dep_data) =
                 data_loader.cells.get(&deps_out_point.out_point()).unwrap();
             CellMetaBuilder::from_cell_output(dep_output.to_owned(), dep_data.to_owned())
