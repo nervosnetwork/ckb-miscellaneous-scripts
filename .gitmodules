@@ -23,3 +23,7 @@
 	path = deps/libecc-optimized
 	url = https://github.com/contrun/libecc.git
 	branch = benchmark-signature-verification
+[submodule "deps/ckb-lua"]
+	path = deps/ckb-lua
+	url = https://github.com/contrun/ckb-lua.git
+	branch = simple-user-defined-token
