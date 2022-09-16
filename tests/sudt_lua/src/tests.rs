@@ -236,7 +236,7 @@ fn create_cell(
 
 fn get_lua_type_script_args(hash: packed::Byte32) -> Bytes {
     let hash = hash.as_slice();
-    let hash_type: packed::Byte = ScriptHashType::Data.into();
+    let hash_type: packed::Byte = ScriptHashType::Data1.into();
     let hash_type = hash_type.as_slice();
     let mut buf = BytesMut::with_capacity(hash.len() + hash_type.len());
     buf.put(hash);
@@ -306,12 +306,12 @@ fn gen_tx_with_grouped_args<R: Rng>(
             let type_script = Script::new_builder()
                 .args(get_lua_type_script_args(lua_script_cell_data_hash.clone()).pack())
                 .code_hash(lua_binary_cell_data_hash.clone())
-                .hash_type(ScriptHashType::Data.into())
+                .hash_type(ScriptHashType::Data1.into())
                 .build();
             let lock_script = Script::new_builder()
                 .args(args.pack())
                 .code_hash(lock_script_cell_data_hash.clone())
-                .hash_type(ScriptHashType::Data.into())
+                .hash_type(ScriptHashType::Data1.into())
                 .build();
             dbg!(&type_script, &dummy.cells.keys());
             let previous_output_cell = CellOutput::new_builder()
