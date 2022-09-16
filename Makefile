@@ -33,7 +33,7 @@ DOCKER_EXTRA_FLAGS ?=
 # docker pull nervos/ckb-riscv-gnu-toolchain:gnu-bionic-20191012
 BUILDER_DOCKER := nervos/ckb-riscv-gnu-toolchain@sha256:aae8a3f79705f67d505d1f1d5ddc694a4fd537ed1c7e9622420a470d59ba2ec3
 
-all: build/htlc build/secp256k1_blake2b_sighash_all_lib.so build/or build/simple_udt build/secp256k1_blake2b_sighash_all_dual build/and build/open_transaction build/rsa_sighash_all blst-demo deps/libecc deps/libecc-optimized build/secp256r1_blake160_sighash_all build/secp256r1_blake160_c build/secp256r1_blake160_sighash_bench build/secp256r1_blake160_sighash_lay2dev_bench
+all: build/htlc build/secp256k1_blake2b_sighash_all_lib.so build/or build/simple_udt build/secp256k1_blake2b_sighash_all_dual build/and build/open_transaction build/rsa_sighash_all blst-demo deps/libecc deps/libecc-optimized build/secp256r1_blake160_sighash_all build/secp256r1_blake160_c build/secp256r1_blake160_sighash_bench build/secp256r1_blake160_sighash_lay2dev_bench ckb-lua
 
 docker-interactive:
 	docker run --user ${DOCKER_USER} --rm -it -v "${CURRENT_DIR}:/code" --workdir /code --entrypoint /bin/bash ${DOCKER_EXTRA_FLAGS} ${BUILDER_DOCKER}
@@ -126,6 +126,9 @@ build/simple_udt: c/simple_udt.c
 
 libecc:
 	make -C ${LIBECC_PATH} CC=${CC} LD=${LD} CFLAGS="$(CFLAGS_LIBECC)"
+
+ckb-lua:
+	make -C deps/ckb-lua
 
 libecc-optimized:
 	make -C ${LIBECC_OPTIMIZED_PATH} LIBECC_WITH_LL_U256_MONT=1 CC=${CC} LD=${LD} CFLAGS="$(CFLAGS_LIBECC_OPTIMIZED)"
@@ -221,6 +224,7 @@ clean:
 	make -C deps/mbedtls/library clean
 	make -C ${LIBECC_PATH} clean
 	make -C ${LIBECC_OPTIMIZED_PATH} clean
+	make -C deps/ckb-lua clean
 	rm -f build/rsa_sighash_all
 	rm -f build/blst* build/server.o build/server-asm.o
 	rm -f build/ll_u256_mont*
