@@ -39,7 +39,8 @@ lazy_static! {
     pub static ref SECP256R1_BLAKE160_SIGHASH_ALL_BIN: Bytes =
         Bytes::from(&include_bytes!("../../../build/secp256r1_blake160_sighash_all")[..]);
     pub static ref SUDT_LUA_BIN: Bytes =
-        Bytes::from(&include_bytes!("../../../deps/ckb-lua/contracts/sudt.lua")[..]);
+        // Bytes::from(&include_bytes!("../../../deps/ckb-lua/contracts/sudt.lua")[..]);
+        Bytes::from(&include_bytes!("../../../deps/ckb-lua/contracts/hello.lua")[..]);
 }
 
 #[derive(Default)]
@@ -214,8 +215,8 @@ fn get_random_out_point<R: Rng>(rng: &mut R) -> OutPoint {
 
 fn create_cell(
     dummy: &mut DummyDataLoader,
-    content: &Bytes,
     out_point: &OutPoint,
+    content: &Bytes,
 ) -> packed::Byte32 {
     let cell = CellOutput::new_builder()
         .capacity(
@@ -225,10 +226,22 @@ fn create_cell(
         )
         .build();
     let cell_data_hash = CellOutput::calc_data_hash(content);
+    dbg!(out_point, dummy.cells.keys());
     dummy
         .cells
         .insert(out_point.clone(), (cell, content.clone()));
+    dbg!(out_point, dummy.cells.keys());
     cell_data_hash
+}
+
+fn get_lua_type_script_args(hash: packed::Byte32) -> Bytes {
+    let hash = hash.as_slice();
+    let hash_type: packed::Byte = ScriptHashType::Data.into();
+    let hash_type = hash_type.as_slice();
+    let mut buf = BytesMut::with_capacity(hash.len() + hash_type.len());
+    buf.put(hash);
+    buf.put(hash_type);
+    buf.freeze()
 }
 
 fn gen_tx_with_grouped_args<R: Rng>(
@@ -237,16 +250,25 @@ fn gen_tx_with_grouped_args<R: Rng>(
     rng: &mut R,
 ) -> TransactionView {
     let lua_binary_out_point = get_random_out_point(rng);
-    let lua_binary_cell_data_hash = create_cell(dummy, &LUA_LOADER_BIN, &lua_binary_out_point);
+    let lua_binary_cell_data_hash = create_cell(dummy, &lua_binary_out_point, &LUA_LOADER_BIN);
 
     let lua_script_out_point = get_random_out_point(rng);
-    let lua_script_cell_data_hash = create_cell(dummy, &SUDT_LUA_BIN, &lua_binary_out_point);
+    let lua_script_cell_data_hash = create_cell(dummy, &lua_script_out_point, &SUDT_LUA_BIN);
 
     let lock_script_out_point = get_random_out_point(rng);
     let lock_script_cell_data_hash = create_cell(
         dummy,
-        &SECP256R1_BLAKE160_SIGHASH_ALL_BIN,
         &lock_script_out_point,
+        &SECP256R1_BLAKE160_SIGHASH_ALL_BIN,
+    );
+
+    dbg!(
+        &lua_binary_cell_data_hash,
+        &lua_binary_out_point,
+        &lua_script_cell_data_hash,
+        &lua_script_out_point,
+        &lock_script_cell_data_hash,
+        &lock_script_out_point
     );
 
     // setup default tx builder
@@ -256,8 +278,16 @@ fn gen_tx_with_grouped_args<R: Rng>(
             CellDep::new_builder()
                 .out_point(lua_binary_out_point)
                 .dep_type(DepType::Code.into())
+                .build(),
+        )
+        .cell_dep(
+            CellDep::new_builder()
                 .out_point(lua_script_out_point)
                 .dep_type(DepType::Code.into())
+                .build(),
+        )
+        .cell_dep(
+            CellDep::new_builder()
                 .out_point(lock_script_out_point)
                 .dep_type(DepType::Code.into())
                 .build(),
@@ -272,25 +302,28 @@ fn gen_tx_with_grouped_args<R: Rng>(
     for (args, inputs_size) in grouped_args {
         // setup dummy input unlock script
         for _ in 0..inputs_size {
-            let previous_tx_hash = {
-                let mut buf = [0u8; 32];
-                rng.fill(&mut buf);
-                buf.pack()
-            };
-            let previous_out_point = OutPoint::new(previous_tx_hash, 0);
+            let previous_out_point = get_random_out_point(rng);
+            let type_script = Script::new_builder()
+                .args(get_lua_type_script_args(lua_script_cell_data_hash.clone()).pack())
+                .code_hash(lua_binary_cell_data_hash.clone())
+                .hash_type(ScriptHashType::Data.into())
+                .build();
             let lock_script = Script::new_builder()
                 .args(args.pack())
                 .code_hash(lock_script_cell_data_hash.clone())
                 .hash_type(ScriptHashType::Data.into())
                 .build();
+            dbg!(&type_script, &dummy.cells.keys());
             let previous_output_cell = CellOutput::new_builder()
                 .capacity(dummy_capacity.pack())
                 .lock(lock_script)
+                .type_(Some(type_script).pack())
                 .build();
             dummy.cells.insert(
                 previous_out_point.clone(),
                 (previous_output_cell.clone(), Bytes::new()),
             );
+            dbg!(&dummy.cells.keys());
             let mut random_extra_witness = [0u8; 32];
             rng.fill(&mut random_extra_witness);
             let witness_args = WitnessArgsBuilder::default()
