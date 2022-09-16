@@ -201,39 +201,48 @@ fn gen_tx(dummy: &mut DummyDataLoader, lock_args: Bytes) -> TransactionView {
     gen_tx_with_grouped_args(dummy, vec![(lock_args, 1)], &mut rng)
 }
 
+fn get_random_out_point<R: Rng>(rng: &mut R) -> OutPoint {
+    let contract_tx_hash = {
+        let mut buf = [0u8; 32];
+        rng.fill(&mut buf);
+        buf.pack()
+    };
+    OutPoint::new(contract_tx_hash, 0)
+}
+
+fn create_cell(
+    dummy: &mut DummyDataLoader,
+    content: &Bytes,
+    out_point: &OutPoint,
+) -> packed::Byte32 {
+    let cell = CellOutput::new_builder()
+        .capacity(
+            Capacity::bytes(content.len())
+                .expect("script capacity")
+                .pack(),
+        )
+        .build();
+    let cell_data_hash = CellOutput::calc_data_hash(&LUA_LOADER_BIN);
+    dummy
+        .cells
+        .insert(out_point.clone(), (cell, content.clone()));
+    cell_data_hash
+}
+
 fn gen_tx_with_grouped_args<R: Rng>(
     dummy: &mut DummyDataLoader,
     grouped_args: Vec<(Bytes, usize)>,
     rng: &mut R,
 ) -> TransactionView {
-    // setup dep
-    let contract_out_point = {
-        let contract_tx_hash = {
-            let mut buf = [0u8; 32];
-            rng.fill(&mut buf);
-            buf.pack()
-        };
-        OutPoint::new(contract_tx_hash, 0)
-    };
-    // dep contract code
-    let contract_cell = CellOutput::new_builder()
-        .capacity(
-            Capacity::bytes(LUA_LOADER_BIN.len())
-                .expect("script capacity")
-                .pack(),
-        )
-        .build();
-    let contract_cell_data_hash = CellOutput::calc_data_hash(&LUA_LOADER_BIN);
-    dummy.cells.insert(
-        contract_out_point.clone(),
-        (contract_cell, LUA_LOADER_BIN.clone()),
-    );
+    let lua_binary_out_point = get_random_out_point(rng);
+    let lua_binary_cell_data_hash = create_cell(dummy, &LUA_LOADER_BIN, &lua_binary_out_point);
+
     // setup default tx builder
     let dummy_capacity = Capacity::shannons(42);
     let mut tx_builder = TransactionBuilder::default()
         .cell_dep(
             CellDep::new_builder()
-                .out_point(contract_out_point)
+                .out_point(lua_binary_out_point)
                 .dep_type(DepType::Code.into())
                 .build(),
         )
@@ -255,7 +264,7 @@ fn gen_tx_with_grouped_args<R: Rng>(
             let previous_out_point = OutPoint::new(previous_tx_hash, 0);
             let script = Script::new_builder()
                 .args(args.pack())
-                .code_hash(contract_cell_data_hash.clone())
+                .code_hash(lua_binary_cell_data_hash.clone())
                 .hash_type(ScriptHashType::Data.into())
                 .build();
             let previous_output_cell = CellOutput::new_builder()
