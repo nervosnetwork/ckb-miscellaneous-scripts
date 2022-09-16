@@ -235,10 +235,13 @@ fn create_cell(
 }
 
 fn get_lua_type_script_args(hash: packed::Byte32) -> Bytes {
+    let lua_loader_arguments: [u8; 2] = [0; 2];
+    let lua_loader_arguments = lua_loader_arguments.as_slice();
     let hash = hash.as_slice();
     let hash_type: packed::Byte = ScriptHashType::Data1.into();
     let hash_type = hash_type.as_slice();
-    let mut buf = BytesMut::with_capacity(hash.len() + hash_type.len());
+    let mut buf = BytesMut::with_capacity(lua_loader_arguments.len() + hash.len() + hash_type.len());
+    buf.put(lua_loader_arguments);
     buf.put(hash);
     buf.put(hash_type);
     buf.freeze()
