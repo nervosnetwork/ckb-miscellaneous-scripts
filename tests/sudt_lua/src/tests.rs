@@ -261,7 +261,7 @@ fn get_lua_type_script_args(hash: packed::Byte32) -> Bytes {
     let hash_type: packed::Byte = ScriptHashType::Data1.into();
     let hash_type = hash_type.as_slice();
     let owner_pk_hash = get_owner_lock_hash();
-    let owner_pk_hash = owner_pk_hash.as_ref();
+    let owner_pk_hash = owner_pk_hash.as_slice();
     let mut buf = BytesMut::with_capacity(
         lua_loader_arguments.len() + hash.len() + hash_type.len() + owner_pk_hash.len(),
     );
@@ -452,11 +452,24 @@ fn get_owner_signing_key() -> SigningKey {
     SigningKey::from_bytes(x).unwrap()
 }
 
-fn get_owner_lock_hash() -> Bytes {
-    // Dumped from ckb ckb.load_cell_by_field(index, ckb.SOURCE_INPUT, ckb.CELL_FIELD_LOCK_HASH)
-    static OWNER_LOCK_HASH: [u8; 32] =
-        hex!("854188d34c6b65bf2307cceffd42ab0cfe85b6c8dc8fd7aa6a7a621ce982e2bf");
-    Bytes::from_static(&OWNER_LOCK_HASH)
+fn get_owner_lock_hash() -> Byte32 {
+    let cell_data_hash = CellOutput::calc_data_hash(&SECP256R1_BLAKE160_SIGHASH_ALL_BIN);
+    let lock_script = Script::new_builder()
+        .args(get_pk_hash(&get_owner_signing_key().verifying_key()).pack())
+        .code_hash(cell_data_hash.clone())
+        .hash_type(ScriptHashType::Data1.into())
+        .build();
+    let cell = CellOutput::new_builder()
+        .capacity(
+            Capacity::bytes(SECP256R1_BLAKE160_SIGHASH_ALL_BIN.len())
+                .expect("script capacity")
+                .pack(),
+        )
+        .lock(lock_script)
+        .build();
+    let hash = cell.calc_lock_hash();
+    dbg!(&hash);
+    hash
 }
 
 fn get_sample_signing_key() -> SigningKey {
