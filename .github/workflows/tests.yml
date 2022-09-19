@@ -19,7 +19,7 @@ jobs:
       run: cargo test
       working-directory: ./tests/secp256r1_blake160
 
-    - name: Run tests for secp256r1_blake160 rust
+    - name: Run tests for sudt lua
       run: cargo test
       working-directory: ./tests/sudt_lua
 

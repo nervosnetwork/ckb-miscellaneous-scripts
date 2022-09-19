@@ -33,7 +33,7 @@ DOCKER_EXTRA_FLAGS ?=
 # docker pull nervos/ckb-riscv-gnu-toolchain:gnu-bionic-20191012
 BUILDER_DOCKER := nervos/ckb-riscv-gnu-toolchain@sha256:aae8a3f79705f67d505d1f1d5ddc694a4fd537ed1c7e9622420a470d59ba2ec3
 
-all: build/htlc build/secp256k1_blake2b_sighash_all_lib.so build/or build/simple_udt build/secp256k1_blake2b_sighash_all_dual build/and build/open_transaction build/rsa_sighash_all blst-demo deps/libecc deps/libecc-optimized build/secp256r1_blake160_sighash_all build/secp256r1_blake160_c build/secp256r1_blake160_sighash_bench build/secp256r1_blake160_sighash_lay2dev_bench ckb-lua
+all: build/htlc build/secp256k1_blake2b_sighash_all_lib.so build/or build/simple_udt build/secp256k1_blake2b_sighash_all_dual build/and build/open_transaction build/rsa_sighash_all blst-demo deps/libecc deps/libecc-optimized build/secp256r1_blake160_sighash_all build/secp256r1_blake160_c build/secp256r1_blake160_sighash_bench build/secp256r1_blake160_sighash_lay2dev_bench build/always_success ckb-lua
 
 docker-interactive:
 	docker run --user ${DOCKER_USER} --rm -it -v "${CURRENT_DIR}:/code" --workdir /code --entrypoint /bin/bash ${DOCKER_EXTRA_FLAGS} ${BUILDER_DOCKER}
@@ -48,6 +48,11 @@ build/htlc: c/htlc.c build/secp256k1_blake2b_sighash_all_lib.h
 
 build/secp256k1_blake2b_sighash_all_lib.h: build/generate_data_hash build/secp256k1_blake2b_sighash_all_lib.so
 	$< build/secp256k1_blake2b_sighash_all_lib.so secp256k1_blake2b_sighash_all_data_hash > $@
+
+build/always_success: c/always_success.c
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $<
+	$(OBJCOPY) --only-keep-debug $@ $@.debug
+	$(OBJCOPY) --strip-debug --strip-all $@
 
 # Benchmark for secp256r1 signature verification based on a newer libecc
 build/secp256r1_blake160_sighash_bench: c/secp256r1_blake160_sighash_bench.c c/common.h c/secp256r1_helper.h libecc
