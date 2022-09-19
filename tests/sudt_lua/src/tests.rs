@@ -207,7 +207,10 @@ fn get_pk_hash(pubkey: &VerifyingKey) -> Bytes {
     blake160(&pubkey.to_encoded_point(false).as_bytes()[1..])
 }
 
-fn gen_tx(dummy: &mut DummyDataLoader, arguments: &[GenerateTransactionArgument]) -> TransactionView {
+fn gen_tx(
+    dummy: &mut DummyDataLoader,
+    arguments: &[GenerateTransactionArgument],
+) -> TransactionView {
     let mut rng = <StdRng as SeedableRng>::from_seed([42u8; 32]);
     gen_tx_with_grouped_args(dummy, arguments, &mut rng)
 }
@@ -248,7 +251,7 @@ fn get_lua_type_script_args(hash: packed::Byte32) -> Bytes {
     let hash = hash.as_slice();
     let hash_type: packed::Byte = ScriptHashType::Data1.into();
     let hash_type = hash_type.as_slice();
-    let owner_pk_hash = get_owner_public_key_hash();
+    let owner_pk_hash = get_owner_lock_hash();
     let owner_pk_hash = owner_pk_hash.as_ref();
     let mut buf = BytesMut::with_capacity(
         lua_loader_arguments.len() + hash.len() + hash_type.len() + owner_pk_hash.len(),
@@ -440,8 +443,10 @@ fn get_owner_signing_key() -> SigningKey {
     SigningKey::from_bytes(x).unwrap()
 }
 
-fn get_owner_public_key_hash() -> Bytes {
-    get_pk_hash(&get_owner_signing_key().verifying_key())
+fn get_owner_lock_hash() -> Bytes {
+    // Dumped from ckb ckb.load_cell_by_field(index, ckb.SOURCE_INPUT, ckb.CELL_FIELD_LOCK_HASH)
+    static OWNER_LOCK_HASH: [u8; 32] = hex!("854188d34c6b65bf2307cceffd42ab0cfe85b6c8dc8fd7aa6a7a621ce982e2bf");
+    Bytes::from_static(&OWNER_LOCK_HASH)
 }
 
 fn get_sample_signing_key() -> SigningKey {
@@ -520,6 +525,34 @@ fn test_simple_user_defined_token2() {
         ],
     );
     let tx = sign_txs(tx, &privkey);
+    let resolved_tx = build_resolved_tx(&data_loader, &tx);
+    println!("{}", resolved_tx.transaction.data());
+    dbg!(&resolved_tx);
+    let consensus = gen_consensus();
+    let tx_env = gen_tx_env();
+    let mut verifier =
+        TransactionScriptsVerifier::new(&resolved_tx, &consensus, &data_loader, &tx_env);
+    verifier.set_debug_printer(debug_printer);
+    let verify_result = verifier.verify(MAX_CYCLES);
+    verify_result.expect("pass verification");
+}
+
+#[test]
+fn test_owner_mint_tokens() {
+    let mut data_loader = DummyDataLoader::new();
+    let privkey = get_owner_signing_key();
+    let mut output_data = [0u8; 16];
+    output_data[0] = 0x43u8;
+    output_data[1] = 0x42u8;
+    let tx = gen_tx(
+        &mut data_loader,
+        &[GenerateTransactionArgument {
+            sk: privkey.clone(),
+            input_amount: None,
+            output_amount: Some(output_data),
+        }],
+    );
+    let tx = sign_tx(tx, &privkey);
     let resolved_tx = build_resolved_tx(&data_loader, &tx);
     println!("{}", resolved_tx.transaction.data());
     dbg!(&resolved_tx);
