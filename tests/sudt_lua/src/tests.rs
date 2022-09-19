@@ -45,8 +45,8 @@ static SMALLER_AMOUNT: [u8; 16] = [
 lazy_static! {
     pub static ref LUA_LOADER_BIN: Bytes =
         Bytes::from(&include_bytes!("../../../deps/ckb-lua/build/lua-loader")[..]);
-    pub static ref SECP256R1_BLAKE160_SIGHASH_ALL_BIN: Bytes =
-        Bytes::from(&include_bytes!("../../../build/secp256r1_blake160_sighash_all")[..]);
+    pub static ref ALWAYS_SUCCESS_BIN: Bytes =
+        Bytes::from(&include_bytes!("../../../build/always_success")[..]);
     pub static ref SUDT_LUA_BIN: Bytes =
         Bytes::from(&include_bytes!("../../../deps/ckb-lua/contracts/sudt.lua")[..]);
 }
@@ -293,11 +293,8 @@ fn gen_tx_with_grouped_args<R: Rng>(
     let lua_script_cell_data_hash = create_cell(dummy, &lua_script_out_point, &SUDT_LUA_BIN);
 
     let lock_script_out_point = get_random_out_point(rng);
-    let lock_script_cell_data_hash = create_cell(
-        dummy,
-        &lock_script_out_point,
-        &SECP256R1_BLAKE160_SIGHASH_ALL_BIN,
-    );
+    let lock_script_cell_data_hash =
+        create_cell(dummy, &lock_script_out_point, &ALWAYS_SUCCESS_BIN);
 
     dbg!(
         &lua_binary_cell_data_hash,
@@ -453,7 +450,7 @@ fn get_owner_signing_key() -> SigningKey {
 }
 
 fn get_owner_lock_hash() -> Byte32 {
-    let cell_data_hash = CellOutput::calc_data_hash(&SECP256R1_BLAKE160_SIGHASH_ALL_BIN);
+    let cell_data_hash = CellOutput::calc_data_hash(&ALWAYS_SUCCESS_BIN);
     let lock_script = Script::new_builder()
         .args(get_pk_hash(&get_owner_signing_key().verifying_key()).pack())
         .code_hash(cell_data_hash.clone())
@@ -461,7 +458,7 @@ fn get_owner_lock_hash() -> Byte32 {
         .build();
     let cell = CellOutput::new_builder()
         .capacity(
-            Capacity::bytes(SECP256R1_BLAKE160_SIGHASH_ALL_BIN.len())
+            Capacity::bytes(ALWAYS_SUCCESS_BIN.len())
                 .expect("script capacity")
                 .pack(),
         )
