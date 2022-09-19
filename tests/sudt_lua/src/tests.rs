@@ -25,7 +25,7 @@ use ckb_types::{
 };
 use hex_literal::hex;
 use rand::rngs::StdRng;
-use rand::{thread_rng, Rng, SeedableRng};
+use rand::{Rng, SeedableRng};
 
 pub const MAX_CYCLES: u64 = std::u64::MAX;
 pub const LOCK_WITNESS_SIZE: usize = 128;
@@ -40,7 +40,6 @@ lazy_static! {
         Bytes::from(&include_bytes!("../../../build/secp256r1_blake160_sighash_all")[..]);
     pub static ref SUDT_LUA_BIN: Bytes =
         Bytes::from(&include_bytes!("../../../deps/ckb-lua/contracts/sudt.lua")[..]);
-        // Bytes::from(&include_bytes!("../../../deps/ckb-lua/contracts/hello.lua")[..]);
 }
 
 #[derive(Default)]
@@ -85,6 +84,14 @@ pub fn sign_tx(tx: TransactionView, key: &SigningKey) -> TransactionView {
     sign_tx_by_input_group(tx, key, 0, witnesses_len)
 }
 
+pub fn sign_txs(tx: TransactionView, keys: &[SigningKey]) -> TransactionView {
+    let mut tx = tx;
+    for (i, key) in keys.iter().enumerate() {
+        tx = sign_tx_by_input_group(tx, key, i, 1)
+    }
+    tx
+}
+
 pub fn get_blake2_hash_for_input_group(
     tx: TransactionView,
     start_index: usize,
@@ -104,6 +111,7 @@ pub fn get_blake2_hash_for_input_group(
     let witness_len = witness_for_digest.as_bytes().len() as u64;
     blake2b.update(&witness_len.to_le_bytes());
     blake2b.update(&witness_for_digest.as_bytes());
+    dbg!(&tx.witnesses());
     ((start_index + 1)..(start_index + wintess_num)).for_each(|n| {
         let witness = tx.witnesses().get(n).unwrap();
         let witness_len = witness.raw_data().len() as u64;
@@ -199,7 +207,7 @@ fn get_pk_hash(pubkey: &VerifyingKey) -> Bytes {
     blake160(&pubkey.to_encoded_point(false).as_bytes()[1..])
 }
 
-fn gen_tx(dummy: &mut DummyDataLoader, arguments: &[Argument]) -> TransactionView {
+fn gen_tx(dummy: &mut DummyDataLoader, arguments: &[GenerateTransactionArgument]) -> TransactionView {
     let mut rng = <StdRng as SeedableRng>::from_seed([42u8; 32]);
     gen_tx_with_grouped_args(dummy, arguments, &mut rng)
 }
@@ -252,7 +260,8 @@ fn get_lua_type_script_args(hash: packed::Byte32) -> Bytes {
     buf.freeze()
 }
 
-struct Argument {
+// For simplicity, we don't use grouped inputs/outputs here
+struct GenerateTransactionArgument {
     sk: SigningKey,
     input_amount: Option<[u8; 16]>,
     output_amount: Option<[u8; 16]>,
@@ -262,7 +271,7 @@ const AMOUNT_ZERO: [u8; 16] = [0; 16];
 
 fn gen_tx_with_grouped_args<R: Rng>(
     dummy: &mut DummyDataLoader,
-    arguments: &[Argument],
+    arguments: &[GenerateTransactionArgument],
     rng: &mut R,
 ) -> TransactionView {
     let lua_binary_out_point = get_random_out_point(rng);
@@ -362,9 +371,9 @@ fn gen_tx_with_grouped_args<R: Rng>(
                     .type_(Some(type_script).pack())
                     .build(),
             )
-            .output_data(Bytes::copy_from_slice(
-                &argument.output_amount.unwrap_or(AMOUNT_ZERO),
-            ).pack())
+            .output_data(
+                Bytes::copy_from_slice(&argument.output_amount.unwrap_or(AMOUNT_ZERO)).pack(),
+            )
             .witness(witness_args.as_bytes().pack());
         dbg!(&tx_builder);
     }
@@ -466,12 +475,51 @@ fn test_simple_user_defined_token() {
     output_data[1] = 0x42u8;
     let tx = gen_tx(
         &mut data_loader,
-        &[Argument {
+        &[GenerateTransactionArgument {
             sk: privkey.clone(),
             input_amount: Some(input_data),
             output_amount: Some(output_data),
-        }]);
+        }],
+    );
     let tx = sign_tx(tx, &privkey);
+    let resolved_tx = build_resolved_tx(&data_loader, &tx);
+    println!("{}", resolved_tx.transaction.data());
+    dbg!(&resolved_tx);
+    let consensus = gen_consensus();
+    let tx_env = gen_tx_env();
+    let mut verifier =
+        TransactionScriptsVerifier::new(&resolved_tx, &consensus, &data_loader, &tx_env);
+    verifier.set_debug_printer(debug_printer);
+    let verify_result = verifier.verify(MAX_CYCLES);
+    verify_result.expect("pass verification");
+}
+
+#[test]
+fn test_simple_user_defined_token2() {
+    let mut data_loader = DummyDataLoader::new();
+    let privkey = get_random_signing_keys(2);
+    let mut input_data = [0u8; 16];
+    input_data[0] = 0x42u8;
+    input_data[1] = 0x43u8;
+    let mut output_data = [0u8; 16];
+    output_data[0] = 0x43u8;
+    output_data[1] = 0x42u8;
+    let tx = gen_tx(
+        &mut data_loader,
+        &[
+            GenerateTransactionArgument {
+                sk: privkey[0].clone(),
+                input_amount: Some(input_data),
+                output_amount: Some(output_data),
+            },
+            GenerateTransactionArgument {
+                sk: privkey[1].clone(),
+                input_amount: Some(output_data),
+                output_amount: Some(input_data),
+            },
+        ],
+    );
+    let tx = sign_txs(tx, &privkey);
     let resolved_tx = build_resolved_tx(&data_loader, &tx);
     println!("{}", resolved_tx.transaction.data());
     dbg!(&resolved_tx);
