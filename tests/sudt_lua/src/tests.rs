@@ -30,8 +30,17 @@ use rand::{Rng, SeedableRng};
 pub const MAX_CYCLES: u64 = std::u64::MAX;
 pub const LOCK_WITNESS_SIZE: usize = 128;
 
-const ERROR_SECP_VERIFICATION: i8 = -12;
-const ERROR_PUBKEY_BLAKE160_HASH: i8 = -31;
+const ERROR_AMOUNT: i8 = -7;
+
+static LARGER_AMOUNT: [u8; 16] = [
+    0x42u8, 0x43u8, 0x42u8, 0x43u8, 0x42u8, 0x43u8, 0x42u8, 0x43u8, 0x42u8, 0x43u8, 0x42u8, 0x43u8,
+    0x42u8, 0x43u8, 0x42u8, 0x43u8,
+];
+
+static SMALLER_AMOUNT: [u8; 16] = [
+    0x43u8, 0x42u8, 0x43u8, 0x42u8, 0x43u8, 0x42u8, 0x43u8, 0x42u8, 0x43u8, 0x42u8, 0x43u8, 0x42u8,
+    0x43u8, 0x42u8, 0x43u8, 0x42u8,
+];
 
 lazy_static! {
     pub static ref LUA_LOADER_BIN: Bytes =
@@ -445,7 +454,8 @@ fn get_owner_signing_key() -> SigningKey {
 
 fn get_owner_lock_hash() -> Bytes {
     // Dumped from ckb ckb.load_cell_by_field(index, ckb.SOURCE_INPUT, ckb.CELL_FIELD_LOCK_HASH)
-    static OWNER_LOCK_HASH: [u8; 32] = hex!("854188d34c6b65bf2307cceffd42ab0cfe85b6c8dc8fd7aa6a7a621ce982e2bf");
+    static OWNER_LOCK_HASH: [u8; 32] =
+        hex!("854188d34c6b65bf2307cceffd42ab0cfe85b6c8dc8fd7aa6a7a621ce982e2bf");
     Bytes::from_static(&OWNER_LOCK_HASH)
 }
 
@@ -472,18 +482,12 @@ fn get_random_signing_keys(n: usize) -> Vec<SigningKey> {
 fn test_simple_user_defined_token() {
     let mut data_loader = DummyDataLoader::new();
     let privkey = get_sample_signing_key();
-    let mut input_data = [0u8; 16];
-    input_data[0] = 0x42u8;
-    input_data[1] = 0x43u8;
-    let mut output_data = [0u8; 16];
-    output_data[0] = 0x43u8;
-    output_data[1] = 0x42u8;
     let tx = gen_tx(
         &mut data_loader,
         &[GenerateTransactionArgument {
             sk: privkey.clone(),
-            input_amount: Some(input_data),
-            output_amount: Some(output_data),
+            input_amount: Some(LARGER_AMOUNT),
+            output_amount: Some(SMALLER_AMOUNT),
         }],
     );
     let tx = sign_tx(tx, &privkey);
@@ -514,13 +518,13 @@ fn test_simple_user_defined_token2() {
         &[
             GenerateTransactionArgument {
                 sk: privkey[0].clone(),
-                input_amount: Some(input_data),
-                output_amount: Some(output_data),
+                input_amount: Some(LARGER_AMOUNT),
+                output_amount: Some(SMALLER_AMOUNT),
             },
             GenerateTransactionArgument {
                 sk: privkey[1].clone(),
-                input_amount: Some(output_data),
-                output_amount: Some(input_data),
+                input_amount: Some(SMALLER_AMOUNT),
+                output_amount: Some(LARGER_AMOUNT),
             },
         ],
     );
@@ -541,15 +545,12 @@ fn test_simple_user_defined_token2() {
 fn test_owner_mint_tokens() {
     let mut data_loader = DummyDataLoader::new();
     let privkey = get_owner_signing_key();
-    let mut output_data = [0u8; 16];
-    output_data[0] = 0x43u8;
-    output_data[1] = 0x42u8;
     let tx = gen_tx(
         &mut data_loader,
         &[GenerateTransactionArgument {
             sk: privkey.clone(),
             input_amount: None,
-            output_amount: Some(output_data),
+            output_amount: Some(LARGER_AMOUNT),
         }],
     );
     let tx = sign_tx(tx, &privkey);
@@ -563,4 +564,32 @@ fn test_owner_mint_tokens() {
     verifier.set_debug_printer(debug_printer);
     let verify_result = verifier.verify(MAX_CYCLES);
     verify_result.expect("pass verification");
+}
+
+#[test]
+fn test_non_owner_mint_tokens() {
+    let mut data_loader = DummyDataLoader::new();
+    let privkey = get_sample_signing_key();
+    let tx = gen_tx(
+        &mut data_loader,
+        &[GenerateTransactionArgument {
+            sk: privkey.clone(),
+            input_amount: None,
+            output_amount: Some(LARGER_AMOUNT),
+        }],
+    );
+    let tx = sign_tx(tx, &privkey);
+    let resolved_tx = build_resolved_tx(&data_loader, &tx);
+    println!("{}", resolved_tx.transaction.data());
+    dbg!(&resolved_tx);
+    let consensus = gen_consensus();
+    let tx_env = gen_tx_env();
+    let mut verifier =
+        TransactionScriptsVerifier::new(&resolved_tx, &consensus, &data_loader, &tx_env);
+    verifier.set_debug_printer(debug_printer);
+    let verify_result = verifier.verify(MAX_CYCLES);
+    assert!(verify_result.is_err());
+    let error = format!("error code {}", ERROR_AMOUNT);
+    dbg!(&verify_result.clone().unwrap_err().to_string());
+    assert!(verify_result.unwrap_err().to_string().contains(&error));
 }
