@@ -199,9 +199,9 @@ fn get_pk_hash(pubkey: &VerifyingKey) -> Bytes {
     blake160(&pubkey.to_encoded_point(false).as_bytes()[1..])
 }
 
-fn gen_tx(dummy: &mut DummyDataLoader, lock_args: Bytes) -> TransactionView {
+fn gen_tx(dummy: &mut DummyDataLoader, arguments: &[Argument]) -> TransactionView {
     let mut rng = <StdRng as SeedableRng>::from_seed([42u8; 32]);
-    gen_tx_with_grouped_args(dummy, vec![(lock_args, 1)], &mut rng)
+    gen_tx_with_grouped_args(dummy, arguments, &mut rng)
 }
 
 fn get_random_out_point<R: Rng>(rng: &mut R) -> OutPoint {
@@ -252,9 +252,17 @@ fn get_lua_type_script_args(hash: packed::Byte32) -> Bytes {
     buf.freeze()
 }
 
+struct Argument {
+    sk: SigningKey,
+    input_amount: Option<[u8; 16]>,
+    output_amount: Option<[u8; 16]>,
+}
+
+const AMOUNT_ZERO: [u8; 16] = [0; 16];
+
 fn gen_tx_with_grouped_args<R: Rng>(
     dummy: &mut DummyDataLoader,
-    grouped_args: Vec<(Bytes, usize)>,
+    arguments: &[Argument],
     rng: &mut R,
 ) -> TransactionView {
     let lua_binary_out_point = get_random_out_point(rng);
@@ -307,61 +315,58 @@ fn gen_tx_with_grouped_args<R: Rng>(
         )
         .output_data(Bytes::new().pack());
 
-    for (args, inputs_size) in grouped_args {
-        // setup dummy input unlock script
-        for _ in 0..inputs_size {
-            let previous_out_point = get_random_out_point(rng);
-            let type_script = Script::new_builder()
-                .args(get_lua_type_script_args(lua_script_cell_data_hash.clone()).pack())
-                .code_hash(lua_binary_cell_data_hash.clone())
-                .hash_type(ScriptHashType::Data1.into())
-                .build();
-            let lock_script = Script::new_builder()
-                .args(args.pack())
-                .code_hash(lock_script_cell_data_hash.clone())
-                .hash_type(ScriptHashType::Data1.into())
-                .build();
-            dbg!(&type_script, &dummy.cells.keys());
-            let previous_output_cell = CellOutput::new_builder()
-                .capacity(dummy_capacity.pack())
-                .lock(lock_script.clone())
-                .type_(Some(type_script.clone()).pack())
-                .build();
-            // The number is in little endian format.
-            let mut input_data = [0u8; 16];
-            input_data[0] = 0x42u8;
-            input_data[1] = 0x43u8;
-            dummy.cells.insert(
-                previous_out_point.clone(),
-                (
-                    previous_output_cell.clone(),
-                    Bytes::from(input_data.to_vec()),
-                ),
-            );
-            dbg!(&dummy.cells.keys());
-            let mut random_extra_witness = [0u8; 32];
-            rng.fill(&mut random_extra_witness);
-            let witness_args = WitnessArgsBuilder::default()
-                .output_type(Some(Bytes::from(random_extra_witness.to_vec())).pack())
-                .build();
-            dbg!(&tx_builder);
-            dbg!(&random_extra_witness);
-            let mut output_data = [0u8; 16];
-            output_data[0] = 0x43u8;
-            output_data[1] = 0x42u8;
-            tx_builder = tx_builder
-                .input(CellInput::new(previous_out_point, 0))
-                .output(
-                    CellOutput::new_builder()
-                        .capacity(dummy_capacity.pack())
-                        .lock(lock_script.clone())
-                        .type_(Some(type_script).pack())
-                        .build(),
-                )
-                .output_data(output_data.pack())
-                .witness(witness_args.as_bytes().pack());
-            dbg!(&tx_builder);
-        }
+    for argument in arguments {
+        let pk_hash = get_pk_hash(&argument.sk.verifying_key());
+        let previous_out_point = get_random_out_point(rng);
+        let type_script = Script::new_builder()
+            .args(get_lua_type_script_args(lua_script_cell_data_hash.clone()).pack())
+            .code_hash(lua_binary_cell_data_hash.clone())
+            .hash_type(ScriptHashType::Data1.into())
+            .build();
+        let lock_script = Script::new_builder()
+            .args(pk_hash.pack())
+            .code_hash(lock_script_cell_data_hash.clone())
+            .hash_type(ScriptHashType::Data1.into())
+            .build();
+        dbg!(&type_script, &dummy.cells.keys());
+        let previous_output_cell = CellOutput::new_builder()
+            .capacity(dummy_capacity.pack())
+            .lock(lock_script.clone())
+            .type_(Some(type_script.clone()).pack())
+            .build();
+        // The number is in little endian format.
+        dummy.cells.insert(
+            previous_out_point.clone(),
+            (
+                previous_output_cell.clone(),
+                Bytes::copy_from_slice(&argument.input_amount.unwrap_or(AMOUNT_ZERO)),
+            ),
+        );
+        dbg!(&dummy.cells.keys());
+        let mut random_extra_witness = [0u8; 32];
+        rng.fill(&mut random_extra_witness);
+        let witness_args = WitnessArgsBuilder::default()
+            .output_type(Some(Bytes::from(random_extra_witness.to_vec())).pack())
+            .build();
+        dbg!(&tx_builder);
+        dbg!(&random_extra_witness);
+        let mut output_data = [0u8; 16];
+        output_data[0] = 0x43u8;
+        output_data[1] = 0x42u8;
+        tx_builder = tx_builder
+            .input(CellInput::new(previous_out_point, 0))
+            .output(
+                CellOutput::new_builder()
+                    .capacity(dummy_capacity.pack())
+                    .lock(lock_script.clone())
+                    .type_(Some(type_script).pack())
+                    .build(),
+            )
+            .output_data(Bytes::copy_from_slice(
+                &argument.output_amount.unwrap_or(AMOUNT_ZERO),
+            ).pack())
+            .witness(witness_args.as_bytes().pack());
+        dbg!(&tx_builder);
     }
 
     dbg!(&tx_builder);
@@ -453,8 +458,19 @@ fn get_random_signing_keys(n: usize) -> Vec<SigningKey> {
 fn test_simple_user_defined_token() {
     let mut data_loader = DummyDataLoader::new();
     let privkey = get_sample_signing_key();
-    let pubkey = privkey.verifying_key();
-    let tx = gen_tx(&mut data_loader, get_pk_hash(&pubkey));
+    let mut input_data = [0u8; 16];
+    input_data[0] = 0x42u8;
+    input_data[1] = 0x43u8;
+    let mut output_data = [0u8; 16];
+    output_data[0] = 0x43u8;
+    output_data[1] = 0x42u8;
+    let tx = gen_tx(
+        &mut data_loader,
+        &[Argument {
+            sk: privkey.clone(),
+            input_amount: Some(input_data),
+            output_amount: Some(output_data),
+        }]);
     let tx = sign_tx(tx, &privkey);
     let resolved_tx = build_resolved_tx(&data_loader, &tx);
     println!("{}", resolved_tx.transaction.data());
