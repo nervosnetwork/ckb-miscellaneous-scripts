@@ -39,8 +39,8 @@ lazy_static! {
     pub static ref SECP256R1_BLAKE160_SIGHASH_ALL_BIN: Bytes =
         Bytes::from(&include_bytes!("../../../build/secp256r1_blake160_sighash_all")[..]);
     pub static ref SUDT_LUA_BIN: Bytes =
-        // Bytes::from(&include_bytes!("../../../deps/ckb-lua/contracts/sudt.lua")[..]);
-        Bytes::from(&include_bytes!("../../../deps/ckb-lua/contracts/hello.lua")[..]);
+        Bytes::from(&include_bytes!("../../../deps/ckb-lua/contracts/sudt.lua")[..]);
+        // Bytes::from(&include_bytes!("../../../deps/ckb-lua/contracts/hello.lua")[..]);
 }
 
 #[derive(Default)]
@@ -240,10 +240,15 @@ fn get_lua_type_script_args(hash: packed::Byte32) -> Bytes {
     let hash = hash.as_slice();
     let hash_type: packed::Byte = ScriptHashType::Data1.into();
     let hash_type = hash_type.as_slice();
-    let mut buf = BytesMut::with_capacity(lua_loader_arguments.len() + hash.len() + hash_type.len());
+    let owner_pk_hash = get_owner_public_key_hash();
+    let owner_pk_hash = owner_pk_hash.as_ref();
+    let mut buf = BytesMut::with_capacity(
+        lua_loader_arguments.len() + hash.len() + hash_type.len() + owner_pk_hash.len(),
+    );
     buf.put(lua_loader_arguments);
     buf.put(hash);
     buf.put(hash_type);
+    buf.put(owner_pk_hash);
     buf.freeze()
 }
 
@@ -319,12 +324,19 @@ fn gen_tx_with_grouped_args<R: Rng>(
             dbg!(&type_script, &dummy.cells.keys());
             let previous_output_cell = CellOutput::new_builder()
                 .capacity(dummy_capacity.pack())
-                .lock(lock_script)
-                .type_(Some(type_script).pack())
+                .lock(lock_script.clone())
+                .type_(Some(type_script.clone()).pack())
                 .build();
+            // The number is in little endian format.
+            let mut input_data = [0u8; 16];
+            input_data[0] = 0x42u8;
+            input_data[1] = 0x43u8;
             dummy.cells.insert(
                 previous_out_point.clone(),
-                (previous_output_cell.clone(), Bytes::new()),
+                (
+                    previous_output_cell.clone(),
+                    Bytes::from(input_data.to_vec()),
+                ),
             );
             dbg!(&dummy.cells.keys());
             let mut random_extra_witness = [0u8; 32];
@@ -332,12 +344,27 @@ fn gen_tx_with_grouped_args<R: Rng>(
             let witness_args = WitnessArgsBuilder::default()
                 .output_type(Some(Bytes::from(random_extra_witness.to_vec())).pack())
                 .build();
+            dbg!(&tx_builder);
+            dbg!(&random_extra_witness);
+            let mut output_data = [0u8; 16];
+            output_data[0] = 0x43u8;
+            output_data[1] = 0x42u8;
             tx_builder = tx_builder
                 .input(CellInput::new(previous_out_point, 0))
+                .output(
+                    CellOutput::new_builder()
+                        .capacity(dummy_capacity.pack())
+                        .lock(lock_script.clone())
+                        .type_(Some(type_script).pack())
+                        .build(),
+                )
+                .output_data(output_data.pack())
                 .witness(witness_args.as_bytes().pack());
+            dbg!(&tx_builder);
         }
     }
 
+    dbg!(&tx_builder);
     tx_builder.build()
 }
 
@@ -394,6 +421,15 @@ fn build_resolved_tx(data_loader: &DummyDataLoader, tx: &TransactionView) -> Res
     }
 }
 
+fn get_owner_signing_key() -> SigningKey {
+    let x = &hex!("c9afa9d845ba75166b5c215767b1d6934e50c3db36e89b127b8a622bdeadbeef");
+    SigningKey::from_bytes(x).unwrap()
+}
+
+fn get_owner_public_key_hash() -> Bytes {
+    get_pk_hash(&get_owner_signing_key().verifying_key())
+}
+
 fn get_sample_signing_key() -> SigningKey {
     let x = &hex!("c9afa9d845ba75166b5c215767b1d6934e50c3db36e89b127b8a622b120f6721");
 
@@ -414,13 +450,15 @@ fn get_random_signing_keys(n: usize) -> Vec<SigningKey> {
 }
 
 #[test]
-fn test_sighash_all_unlock() {
+fn test_simple_user_defined_token() {
     let mut data_loader = DummyDataLoader::new();
     let privkey = get_sample_signing_key();
     let pubkey = privkey.verifying_key();
     let tx = gen_tx(&mut data_loader, get_pk_hash(&pubkey));
     let tx = sign_tx(tx, &privkey);
     let resolved_tx = build_resolved_tx(&data_loader, &tx);
+    println!("{}", resolved_tx.transaction.data());
+    dbg!(&resolved_tx);
     let consensus = gen_consensus();
     let tx_env = gen_tx_env();
     let mut verifier =
@@ -428,110 +466,4 @@ fn test_sighash_all_unlock() {
     verifier.set_debug_printer(debug_printer);
     let verify_result = verifier.verify(MAX_CYCLES);
     verify_result.expect("pass verification");
-}
-
-#[test]
-fn test_sighash_all_with_extra_witness_unlock() {
-    let mut data_loader = DummyDataLoader::new();
-    let privkey = get_sample_signing_key();
-    let pubkey = privkey.verifying_key();
-    let tx = gen_tx(&mut data_loader, get_pk_hash(&pubkey));
-    let extract_witness = vec![1, 2, 3, 4];
-    let tx = tx
-        .as_advanced_builder()
-        .set_witnesses(vec![WitnessArgs::new_builder()
-            .output_type(Some(Bytes::from(extract_witness)).pack())
-            .build()
-            .as_bytes()
-            .pack()])
-        .build();
-    {
-        let tx = sign_tx(tx.clone(), &privkey);
-        let resolved_tx = build_resolved_tx(&data_loader, &tx);
-        let consensus = gen_consensus();
-        let tx_env = gen_tx_env();
-        let verify_result =
-            TransactionScriptsVerifier::new(&resolved_tx, &consensus, &data_loader, &tx_env)
-                .verify(MAX_CYCLES);
-        verify_result.expect("pass verification");
-    }
-    {
-        let tx = sign_tx(tx, &privkey);
-        let wrong_witness = tx
-            .witnesses()
-            .get(0)
-            .map(|w| {
-                WitnessArgs::new_unchecked(w.unpack())
-                    .as_builder()
-                    .output_type(Some(Bytes::from(vec![0])).pack())
-                    .build()
-            })
-            .unwrap();
-        let tx = tx
-            .as_advanced_builder()
-            .set_witnesses(vec![wrong_witness.as_bytes().pack()])
-            .build();
-        let resolved_tx = build_resolved_tx(&data_loader, &tx);
-        let consensus = gen_consensus();
-        let tx_env = gen_tx_env();
-        let verify_result =
-            TransactionScriptsVerifier::new(&resolved_tx, &consensus, &data_loader, &tx_env)
-                .verify(MAX_CYCLES);
-        assert!(verify_result.is_err());
-        let error = format!("error code {}", ERROR_SECP_VERIFICATION);
-        dbg!(&verify_result.clone().unwrap_err().to_string());
-        assert!(verify_result.unwrap_err().to_string().contains(&error));
-    }
-}
-
-#[test]
-fn test_sighash_all_with_2_different_inputs_unlock() {
-    let mut rng = thread_rng();
-    let mut data_loader = DummyDataLoader::new();
-    let privkeys = get_random_signing_keys(2);
-    // key1
-    let privkey = &privkeys[0];
-    let pubkey = privkey.verifying_key();
-    // key2
-    let privkey2 = &privkeys[1];
-    let pubkey2 = privkey2.verifying_key();
-
-    // sign with 2 keys
-    let tx = gen_tx_with_grouped_args(
-        &mut data_loader,
-        vec![(get_pk_hash(&pubkey), 2), (get_pk_hash(&pubkey2), 2)],
-        &mut rng,
-    );
-    let tx = sign_tx_by_input_group(tx, privkey, 0, 2);
-    let tx = sign_tx_by_input_group(tx, privkey2, 2, 2);
-
-    let resolved_tx = build_resolved_tx(&data_loader, &tx);
-    let consensus = gen_consensus();
-    let tx_env = gen_tx_env();
-    let verify_result =
-        TransactionScriptsVerifier::new(&resolved_tx, &consensus, &data_loader, &tx_env)
-            .verify(MAX_CYCLES);
-    verify_result.expect("pass verification");
-}
-
-#[test]
-fn test_signing_with_wrong_key() {
-    let mut data_loader = DummyDataLoader::new();
-    let privkey = get_sample_signing_key();
-    let pubkey = privkey.verifying_key();
-    let tx = gen_tx(&mut data_loader, get_pk_hash(&pubkey));
-    let wrong_privkey = SigningKey::from_bytes(&hex!(
-        "c9afa9d845ba75166b5c215767b1d6934e50c3db36e89b127b8a622b120f6722"
-    ))
-    .unwrap();
-    let tx = sign_tx(tx, &wrong_privkey);
-    let resolved_tx = build_resolved_tx(&data_loader, &tx);
-    let consensus = gen_consensus();
-    let tx_env = gen_tx_env();
-    let verify_result =
-        TransactionScriptsVerifier::new(&resolved_tx, &consensus, &data_loader, &tx_env)
-            .verify(MAX_CYCLES);
-    assert!(verify_result.is_err());
-    let error = format!("error code {}", ERROR_PUBKEY_BLAKE160_HASH);
-    assert!(verify_result.unwrap_err().to_string().contains(&error));
 }
