@@ -120,7 +120,6 @@ pub fn get_blake2_hash_for_input_group(
     let witness_len = witness_for_digest.as_bytes().len() as u64;
     blake2b.update(&witness_len.to_le_bytes());
     blake2b.update(&witness_for_digest.as_bytes());
-    dbg!(&tx.witnesses());
     ((start_index + 1)..(start_index + wintess_num)).for_each(|n| {
         let witness = tx.witnesses().get(n).unwrap();
         let witness_len = witness.raw_data().len() as u64;
@@ -246,11 +245,9 @@ fn create_cell(
         )
         .build();
     let cell_data_hash = CellOutput::calc_data_hash(content);
-    dbg!(out_point, dummy.cells.keys());
     dummy
         .cells
         .insert(out_point.clone(), (cell, content.clone()));
-    dbg!(out_point, dummy.cells.keys());
     cell_data_hash
 }
 
@@ -296,15 +293,6 @@ fn gen_tx_with_grouped_args<R: Rng>(
     let lock_script_cell_data_hash =
         create_cell(dummy, &lock_script_out_point, &ALWAYS_SUCCESS_BIN);
 
-    dbg!(
-        &lua_binary_cell_data_hash,
-        &lua_binary_out_point,
-        &lua_script_cell_data_hash,
-        &lua_script_out_point,
-        &lock_script_cell_data_hash,
-        &lock_script_out_point
-    );
-
     // setup default tx builder
     let dummy_capacity = Capacity::shannons(42);
     let mut tx_builder = TransactionBuilder::default()
@@ -346,7 +334,6 @@ fn gen_tx_with_grouped_args<R: Rng>(
             .code_hash(lock_script_cell_data_hash.clone())
             .hash_type(ScriptHashType::Data1.into())
             .build();
-        dbg!(&type_script, &dummy.cells.keys());
         let previous_output_cell = CellOutput::new_builder()
             .capacity(dummy_capacity.pack())
             .lock(lock_script.clone())
@@ -360,14 +347,11 @@ fn gen_tx_with_grouped_args<R: Rng>(
                 Bytes::copy_from_slice(&argument.input_amount.unwrap_or(AMOUNT_ZERO)),
             ),
         );
-        dbg!(&dummy.cells.keys());
         let mut random_extra_witness = [0u8; 32];
         rng.fill(&mut random_extra_witness);
         let witness_args = WitnessArgsBuilder::default()
             .output_type(Some(Bytes::from(random_extra_witness.to_vec())).pack())
             .build();
-        dbg!(&tx_builder);
-        dbg!(&random_extra_witness);
         let mut output_data = [0u8; 16];
         output_data[0] = 0x43u8;
         output_data[1] = 0x42u8;
@@ -384,10 +368,8 @@ fn gen_tx_with_grouped_args<R: Rng>(
                 Bytes::copy_from_slice(&argument.output_amount.unwrap_or(AMOUNT_ZERO)).pack(),
             )
             .witness(witness_args.as_bytes().pack());
-        dbg!(&tx_builder);
     }
 
-    dbg!(&tx_builder);
     tx_builder.build()
 }
 
@@ -415,8 +397,6 @@ fn build_resolved_tx(data_loader: &DummyDataLoader, tx: &TransactionView) -> Res
         .cell_deps()
         .into_iter()
         .map(|deps_out_point| {
-            dbg!(&deps_out_point);
-            dbg!(&data_loader.cells.keys());
             let (dep_output, dep_data) =
                 data_loader.cells.get(&deps_out_point.out_point()).unwrap();
             CellMetaBuilder::from_cell_output(dep_output.to_owned(), dep_data.to_owned())
@@ -465,7 +445,6 @@ fn get_owner_lock_hash() -> Byte32 {
         .lock(lock_script)
         .build();
     let hash = cell.calc_lock_hash();
-    dbg!(&hash);
     hash
 }
 
@@ -502,8 +481,6 @@ fn test_simple_user_defined_token() {
     );
     let tx = sign_tx(tx, &privkey);
     let resolved_tx = build_resolved_tx(&data_loader, &tx);
-    println!("{}", resolved_tx.transaction.data());
-    dbg!(&resolved_tx);
     let consensus = gen_consensus();
     let tx_env = gen_tx_env();
     let mut verifier =
@@ -541,8 +518,6 @@ fn test_simple_user_defined_token2() {
     );
     let tx = sign_txs(tx, &privkey);
     let resolved_tx = build_resolved_tx(&data_loader, &tx);
-    println!("{}", resolved_tx.transaction.data());
-    dbg!(&resolved_tx);
     let consensus = gen_consensus();
     let tx_env = gen_tx_env();
     let mut verifier =
@@ -567,8 +542,6 @@ fn test_owner_mint_tokens() {
     );
     let tx = sign_tx(tx, &privkey);
     let resolved_tx = build_resolved_tx(&data_loader, &tx);
-    println!("{}", resolved_tx.transaction.data());
-    dbg!(&resolved_tx);
     let consensus = gen_consensus();
     let tx_env = gen_tx_env();
     let mut verifier =
@@ -593,8 +566,6 @@ fn test_non_owner_mint_tokens() {
     );
     let tx = sign_tx(tx, &privkey);
     let resolved_tx = build_resolved_tx(&data_loader, &tx);
-    println!("{}", resolved_tx.transaction.data());
-    dbg!(&resolved_tx);
     let consensus = gen_consensus();
     let tx_env = gen_tx_env();
     let mut verifier =
@@ -604,6 +575,5 @@ fn test_non_owner_mint_tokens() {
     dbg!(&verify_result);
     assert!(verify_result.is_err());
     let error = format!("error code {}", ERROR_AMOUNT);
-    dbg!(&verify_result.clone().unwrap_err().to_string());
     assert!(verify_result.unwrap_err().to_string().contains(&error));
 }
