@@ -48,7 +48,7 @@ lazy_static! {
     pub static ref ALWAYS_SUCCESS_BIN: Bytes =
         Bytes::from(&include_bytes!("../../../build/always_success")[..]);
     pub static ref SUDT_LUA_BIN: Bytes =
-        Bytes::from(&include_bytes!("../../../deps/ckb-lua/contracts/sudt.lua")[..]);
+        Bytes::from(&include_bytes!("../../../deps/ckb-lua/contracts/sudt.lbc")[..]);
 }
 
 #[derive(Default)]
