@@ -16,11 +16,11 @@ jobs:
       run: make all-via-docker
 
     - name: Run tests for secp256r1_blake160 rust
-      run: cargo test
+      run: cargo test -- --nocapture
       working-directory: ./tests/secp256r1_blake160
 
     - name: Run tests for sudt lua
-      run: cargo test
+      run: cargo test -- --nocapture
       working-directory: ./tests/sudt_lua
 
     - name: Set up ckb-vm-runner

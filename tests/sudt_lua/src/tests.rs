@@ -510,6 +510,7 @@ fn test_simple_user_defined_token() {
         TransactionScriptsVerifier::new(&resolved_tx, &consensus, &data_loader, &tx_env);
     verifier.set_debug_printer(debug_printer);
     let verify_result = verifier.verify(MAX_CYCLES);
+    dbg!(&verify_result);
     verify_result.expect("pass verification");
 }
 
@@ -548,6 +549,7 @@ fn test_simple_user_defined_token2() {
         TransactionScriptsVerifier::new(&resolved_tx, &consensus, &data_loader, &tx_env);
     verifier.set_debug_printer(debug_printer);
     let verify_result = verifier.verify(MAX_CYCLES);
+    dbg!(&verify_result);
     verify_result.expect("pass verification");
 }
 
@@ -573,6 +575,7 @@ fn test_owner_mint_tokens() {
         TransactionScriptsVerifier::new(&resolved_tx, &consensus, &data_loader, &tx_env);
     verifier.set_debug_printer(debug_printer);
     let verify_result = verifier.verify(MAX_CYCLES);
+    dbg!(&verify_result);
     verify_result.expect("pass verification");
 }
 
@@ -598,6 +601,7 @@ fn test_non_owner_mint_tokens() {
         TransactionScriptsVerifier::new(&resolved_tx, &consensus, &data_loader, &tx_env);
     verifier.set_debug_printer(debug_printer);
     let verify_result = verifier.verify(MAX_CYCLES);
+    dbg!(&verify_result);
     assert!(verify_result.is_err());
     let error = format!("error code {}", ERROR_AMOUNT);
     dbg!(&verify_result.clone().unwrap_err().to_string());
