@@ -21,7 +21,7 @@ jobs:
 
     - name: Set up ckb-vm-runner
       run: |
-        cargo install --example ckb-vm-runner --branch rvv --git https://github.com/nervosnetwork/ckb-vm.git --features asm ckb-vm
+        cargo install --example ckb-vm-runner --git https://github.com/nervosnetwork/ckb-vm.git --features asm ckb-vm
 
     - name: Run tests for secp256r1_blake160 c
       run: |
