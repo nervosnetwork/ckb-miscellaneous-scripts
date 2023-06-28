@@ -15,7 +15,7 @@ PASSED_MBEDTLS_CFLAGS := -Os -fPIC -nostdinc -nostdlib -DCKB_DECLARATION_ONLY -I
 CFLAGS_BLST := -fno-builtin-printf -Ideps/blst/bindings $(subst ckb-c-stdlib,ckb-c-stdlib-202106,$(CFLAGS))
 CKB_VM_CLI := ckb-vm-b-cli
 
-CFLAGS_LIBECC := -fno-builtin -DWORDSIZE=64 -DWITH_STDLIB -DWITH_BLANK_EXTERNAL_DEPENDENCIES -DCKB_DECLARATION_ONLY -fPIC -g -O3
+CFLAGS_LIBECC := -fno-builtin -DUSER_NN_BIT_LEN=256 -DWORDSIZE=64 -DWITH_STDLIB -DWITH_BLANK_EXTERNAL_DEPENDENCIES -DCKB_DECLARATION_ONLY -fPIC -g -O3
 
 LIBECC_OPTIMIZED_PATH := deps/libecc-riscv-optimized
 LIBECC_OPTIMIZED_FILES := ${LIBECC_OPTIMIZED_PATH}/build/libarith.a ${LIBECC_OPTIMIZED_PATH}/build/libec.a ${LIBECC_OPTIMIZED_PATH}/build/libsign.a
@@ -91,6 +91,10 @@ libecc-riscv-optimized:
 run-secp256r1-bench:
 	$(CKB-DEBUGGER) --bin build/secp256r1_bench
 
+run-pprof:
+	$(CKB-DEBUGGER) --bin build/secp256r1_bench --pprof secp256r1.pprof
+	cat secp256r1.pprof | inferno-flamegraph > secp256r1.svg
+	cat secp256r1.pprof| python3 tools/pprof.py
 ### end of secp256r1
 
 build/secp256k1_blake2b_sighash_all_dual: c/secp256k1_blake2b_sighash_all_dual.c build/secp256k1_data_info.h
