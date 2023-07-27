@@ -1,3 +1,6 @@
+#define CKB_C_STDLIB_PRINTF 
+#include "stdio.h"
+#include "ckb_syscalls.h"
 #include "../libsig.h"
 #include "libecc_helper.h"
 
@@ -125,6 +128,7 @@ err:
 }
 
 int main() {
+  printf("start main...");
   if (verify_signature()) {
     printf("Error: verification failed\n");
     return -1;

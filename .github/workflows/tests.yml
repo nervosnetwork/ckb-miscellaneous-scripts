@@ -19,10 +19,8 @@ jobs:
       run: cargo test
       working-directory: ./tests/secp256r1_blake160
 
-    - name: Set up ckb-vm-runner
-      run: |
-        cargo install --example ckb-vm-runner --git https://github.com/nervosnetwork/ckb-vm.git --features asm ckb-vm
+    - name: Set up ckb-debugger
+      run: make install
 
-    - name: Run tests for secp256r1_blake160 c
-      run: |
-        ckb-vm-runner ./build/secp256r1_blake160_c
+    - name: run secp256r1 bench
+      run: make run-secp256r1-bench
