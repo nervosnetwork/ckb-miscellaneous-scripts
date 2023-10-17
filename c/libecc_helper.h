@@ -15,9 +15,12 @@
 
 /* TODO: Don't know why these are still needed */
 void ext_printf(const char *format, ...) {
-  void *arg = __builtin_apply_args();
-  void *ret = __builtin_apply((void *)printf, arg, 100);
-  __builtin_return(ret);
+  char buf[CKB_C_STDLIB_PRINTF_BUFFER_SIZE];
+  va_list va;
+  va_start(va, format);
+  vsnprintf_(buf, CKB_C_STDLIB_PRINTF_BUFFER_SIZE, format, va);
+  va_end(va);
+  ckb_debug(buf);
 }
 
 int get_random(unsigned char *buf, u16 len) {
