@@ -5,7 +5,7 @@ use ckb_chain_spec::consensus::{Consensus, ConsensusBuilder};
 use p256::ecdsa::{SigningKey, VerifyingKey};
 
 use ckb_script::{TransactionScriptsVerifier, TxVerifyEnv};
-use ckb_types::core::hardfork::HardForkSwitch;
+use ckb_types::core::hardfork::HardForks;
 use ckb_types::{
     bytes::Bytes,
     core::{
@@ -21,6 +21,7 @@ use ckb_types::{
 use hex_literal::hex;
 use rand::rngs::StdRng;
 use rand::{thread_rng, Rng, SeedableRng};
+use std::sync::Arc;
 
 const ERROR_SECP_VERIFICATION: i8 = -12;
 const ERROR_PUBKEY_BLAKE160_HASH: i8 = -31;
@@ -132,7 +133,9 @@ pub fn gen_tx_env() -> TxVerifyEnv {
 }
 
 pub fn gen_consensus() -> Consensus {
-    let hardfork_switch = HardForkSwitch::new_without_any_enabled()
+    let mut hardfork_switch = HardForks::new_mirana();
+    hardfork_switch.ckb2021 = hardfork_switch
+        .ckb2021
         .as_builder()
         .rfc_0032(200)
         .build()
@@ -203,8 +206,12 @@ fn test_sighash_all_unlock() {
     let resolved_tx = build_resolved_tx(&data_loader, &tx);
     let consensus = gen_consensus();
     let tx_env = gen_tx_env();
-    let mut verifier =
-        TransactionScriptsVerifier::new(&resolved_tx, &consensus, &data_loader, &tx_env);
+    let mut verifier = TransactionScriptsVerifier::new(
+        Arc::new(resolved_tx),
+        data_loader,
+        Arc::new(consensus),
+        Arc::new(tx_env),
+    );
     verifier.set_debug_printer(debug_printer);
     let verify_result = verifier.verify(MAX_CYCLES);
     verify_result.expect("pass verification");
@@ -230,9 +237,13 @@ fn test_sighash_all_with_extra_witness_unlock() {
         let resolved_tx = build_resolved_tx(&data_loader, &tx);
         let consensus = gen_consensus();
         let tx_env = gen_tx_env();
-        let verify_result =
-            TransactionScriptsVerifier::new(&resolved_tx, &consensus, &data_loader, &tx_env)
-                .verify(MAX_CYCLES);
+        let verify_result = TransactionScriptsVerifier::new(
+            Arc::new(resolved_tx),
+            data_loader.clone(),
+            Arc::new(consensus),
+            Arc::new(tx_env),
+        )
+        .verify(MAX_CYCLES);
         verify_result.expect("pass verification");
     }
     {
@@ -254,9 +265,13 @@ fn test_sighash_all_with_extra_witness_unlock() {
         let resolved_tx = build_resolved_tx(&data_loader, &tx);
         let consensus = gen_consensus();
         let tx_env = gen_tx_env();
-        let verify_result =
-            TransactionScriptsVerifier::new(&resolved_tx, &consensus, &data_loader, &tx_env)
-                .verify(MAX_CYCLES);
+        let verify_result = TransactionScriptsVerifier::new(
+            Arc::new(resolved_tx),
+            data_loader.clone(),
+            Arc::new(consensus),
+            Arc::new(tx_env),
+        )
+        .verify(MAX_CYCLES);
         assert!(verify_result.is_err());
         let error = format!("error code {}", ERROR_SECP_VERIFICATION);
         dbg!(&verify_result.clone().unwrap_err().to_string());
@@ -288,9 +303,13 @@ fn test_sighash_all_with_2_different_inputs_unlock() {
     let resolved_tx = build_resolved_tx(&data_loader, &tx);
     let consensus = gen_consensus();
     let tx_env = gen_tx_env();
-    let verify_result =
-        TransactionScriptsVerifier::new(&resolved_tx, &consensus, &data_loader, &tx_env)
-            .verify(MAX_CYCLES);
+    let verify_result = TransactionScriptsVerifier::new(
+        Arc::new(resolved_tx),
+        data_loader,
+        Arc::new(consensus),
+        Arc::new(tx_env),
+    )
+    .verify(MAX_CYCLES);
     verify_result.expect("pass verification");
 }
 
@@ -308,9 +327,13 @@ fn test_signing_with_wrong_key() {
     let resolved_tx = build_resolved_tx(&data_loader, &tx);
     let consensus = gen_consensus();
     let tx_env = gen_tx_env();
-    let verify_result =
-        TransactionScriptsVerifier::new(&resolved_tx, &consensus, &data_loader, &tx_env)
-            .verify(MAX_CYCLES);
+    let verify_result = TransactionScriptsVerifier::new(
+        Arc::new(resolved_tx),
+        data_loader,
+        Arc::new(consensus),
+        Arc::new(tx_env),
+    )
+    .verify(MAX_CYCLES);
     assert!(verify_result.is_err());
     let error = format!("error code {}", ERROR_PUBKEY_BLAKE160_HASH);
     assert!(verify_result.unwrap_err().to_string().contains(&error));
