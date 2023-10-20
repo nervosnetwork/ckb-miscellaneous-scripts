@@ -100,7 +100,7 @@ fn gen_tx_with_grouped_args<R: Rng>(
             let script = Script::new_builder()
                 .args(args.pack())
                 .code_hash(sighash_all_cell_data_hash.clone())
-                .hash_type(ScriptHashType::Data.into())
+                .hash_type(ScriptHashType::Data2.into())
                 .build();
             let previous_output_cell = CellOutput::new_builder()
                 .capacity(dummy_capacity.pack())
@@ -134,10 +134,10 @@ pub fn gen_tx_env() -> TxVerifyEnv {
 
 pub fn gen_consensus() -> Consensus {
     let mut hardfork_switch = HardForks::new_mirana();
-    hardfork_switch.ckb2021 = hardfork_switch
-        .ckb2021
+    hardfork_switch.ckb2023 = hardfork_switch
+        .ckb2023
         .as_builder()
-        .rfc_0032(200)
+        .rfc_0049(200) // Enable A and B extension in ckb-vm.
         .build()
         .unwrap();
     ConsensusBuilder::default()
