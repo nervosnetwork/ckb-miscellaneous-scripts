@@ -55,5 +55,6 @@ build/
 cmake-build-release
 simulator/build.simulator
 tests/blst_rust/target
+tests/secp256r1_blake160/target
 secp256r1.pprof
 secp256r1.svg
