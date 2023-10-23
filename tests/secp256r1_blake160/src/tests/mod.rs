@@ -5,7 +5,7 @@ use p256::ecdsa::{
     SigningKey,
 };
 
-use ckb_traits::{CellDataProvider, HeaderProvider};
+use ckb_traits::{CellDataProvider, ExtensionProvider, HeaderProvider};
 use ckb_types::{
     bytes::BufMut,
     bytes::Bytes,
@@ -25,7 +25,7 @@ lazy_static! {
         Bytes::from(&include_bytes!("../../../../build/secp256r1_blake160_sighash_all")[..]);
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct DummyDataLoader {
     pub cells: HashMap<OutPoint, (CellOutput, Bytes)>,
     pub headers: HashMap<Byte32, HeaderView>,
@@ -54,6 +54,12 @@ impl HeaderProvider for DummyDataLoader {
     // load header
     fn get_header(&self, block_hash: &Byte32) -> Option<HeaderView> {
         self.headers.get(block_hash).cloned()
+    }
+}
+
+impl ExtensionProvider for DummyDataLoader {
+    fn get_block_extension(&self, _hash: &Byte32) -> Option<ckb_types::packed::Bytes> {
+        unimplemented!()
     }
 }
 
