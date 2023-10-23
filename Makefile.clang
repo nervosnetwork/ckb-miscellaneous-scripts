@@ -3,7 +3,7 @@ CC := clang-16
 LD := ld.lld-16
 OBJCOPY := llvm-objcopy-16
 CFLAGS_LLVM := --target=riscv64 -march=rv64imac_zba_zbb_zbc_zbs -Wno-error=unused-command-line-argument
-CFLAGS := ${CFLAGS_LLVM} -fPIC -O3 -nostdinc -nostdlib -nostartfiles -fvisibility=hidden -I deps/ckb-c-stdlib -I deps/ckb-c-stdlib/libc -I deps -I deps/ckb-c-stdlib/molecule -I c -I build -I deps/secp256k1/src -I deps/secp256k1 -g -Wno-nonnull -Wno-unused-function
+CFLAGS := ${CFLAGS_LLVM} -fPIC -O3 -nostdinc -nostdlib -nostartfiles -fvisibility=hidden -fdata-sections -ffunction-sections -I deps/ckb-c-stdlib -I deps/ckb-c-stdlib/libc -I deps -I deps/ckb-c-stdlib/molecule -I c -I build -I deps/secp256k1/src -I deps/secp256k1 -g -Wno-nonnull -Wno-unused-function
 LDFLAGS := -Wl,-static -Wl,--gc-sections
 SECP256K1_SRC := deps/secp256k1/src/ecmult_static_pre_context.h
 
