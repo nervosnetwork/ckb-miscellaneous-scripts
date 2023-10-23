@@ -24,24 +24,11 @@ CFLAGS_LINK_TO_LIBECC_OPTIMIZED := ${CFLAGS_LLVM} -fno-builtin -DWORDSIZE=64 -DW
 MOLC := moleculec
 MOLC_VERSION := 0.7.0
 
-DOCKER_USER := $(shell id -u):$(shell id -g)
-DOCKER_EXTRA_FLAGS ?=
-# docker pull nervos/ckb-riscv-gnu-toolchain:gnu-bionic-20191012
-BUILDER_DOCKER := nervos/ckb-riscv-gnu-toolchain@sha256:aae8a3f79705f67d505d1f1d5ddc694a4fd537ed1c7e9622420a470d59ba2ec3
 CKB-DEBUGGER := ckb-debugger
 
 all: build/htlc build/secp256k1_blake2b_sighash_all_lib.so build/or build/simple_udt build/secp256k1_blake2b_sighash_all_dual build/and build/open_transaction build/rsa_sighash_all blst-demo deps/libecc-riscv-optimized build/secp256r1_blake160_sighash_all build/secp256r1_bench
 
 secp256r1: deps/libecc-riscv-optimized build/secp256r1_blake160_sighash_all build/secp256r1_bench
-
-docker-interactive:
-	docker run --user ${DOCKER_USER} --rm -it -v "${CURRENT_DIR}:/code" --workdir /code --entrypoint /bin/bash ${DOCKER_EXTRA_FLAGS} ${BUILDER_DOCKER}
-
-all-via-docker:
-	docker run --user ${DOCKER_USER} --rm -v `pwd`:/code ${BUILDER_DOCKER} bash -c "cd /code && make"
-
-secp256r1-via-docker:
-	docker run --user ${DOCKER_USER} --rm -v `pwd`:/code ${BUILDER_DOCKER} bash -c "cd /code && make secp256r1"
 
 build/htlc: c/htlc.c build/secp256k1_blake2b_sighash_all_lib.h
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $<
@@ -143,9 +130,6 @@ deps/mbedtls/library/libmbedcrypto.a:
 build/impl.o: deps/ckb-c-stdlib/libc/src/impl.c
 	$(CC) -c $(filter-out -DCKB_DECLARATION_ONLY, $(CFLAGS_MBEDTLS)) $(LDFLAGS_MBEDTLS) -o $@ $^
 
-rsa_sighash_all-via-docker:
-	docker run --rm -v `pwd`:/code ${BUILDER_DOCKER} bash -c "cd /code && make build/rsa_sighash_all"
-
 build/rsa_sighash_all: c/rsa_sighash_all.c deps/mbedtls/library/libmbedcrypto.a
 	$(CC) $(CFLAGS_MBEDTLS) $(LDFLAGS_MBEDTLS) -D__SHARED_LIBRARY__ -fPIC -fPIE -pie -Wl,--dynamic-list c/rsa.syms -o $@ $^
 	$(OBJCOPY) --only-keep-debug $@ $@.debug
@@ -235,4 +219,4 @@ dist: clean all
 install:
 	cargo install --git https://github.com/nervosnetwork/ckb-standalone-debugger ckb-debugger
 
-.PHONY: all all-via-docker dist clean fmt
+.PHONY: all dist clean fmt
