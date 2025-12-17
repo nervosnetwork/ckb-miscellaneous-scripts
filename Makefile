@@ -8,10 +8,15 @@ CFLAGS := -fPIC -O3 -nostdinc -nostdlib -nostartfiles -fvisibility=hidden -fdata
 LDFLAGS := -Wl,-static -Wl,--gc-sections
 SECP256K1_SRC := deps/secp256k1/src/ecmult_static_pre_context.h
 
-CFLAGS_MBEDTLS := -fPIC -Os -fno-builtin-printf -nostdinc -nostdlib -nostartfiles -fvisibility=hidden -fdata-sections -ffunction-sections -I deps/ckb-c-stdlib -I deps/ckb-c-stdlib/molecule -I deps/ckb-c-stdlib/libc -I deps/mbedtls/include -Wall -Werror -Wno-nonnull -Wno-nonnull-compare -Wno-unused-function -g
-LDFLAGS_MBEDTLS := -Wl,-static -Wl,--gc-sections
-PASSED_MBEDTLS_CFLAGS := -Os -fPIC -nostdinc -nostdlib -DCKB_DECLARATION_ONLY -I ../../ckb-c-stdlib/libc -I ../../ -fdata-sections -ffunction-sections
+CFLAGS_MBEDTLS := -fPIC -Os -fno-builtin-printf -nostdinc -nostdlib -nostartfiles \
+	-fvisibility=hidden -fdata-sections -ffunction-sections \
+	-I deps/ckb-c-stdlib -I deps/ckb-c-stdlib/molecule -I deps/ckb-c-stdlib/libc \
+	-I deps/mbedtls/include -Wall -Werror -Wno-nonnull -Wno-nonnull-compare -Wno-unused-function -g \
+	-I $(CURRENT_DIR)deps/mbedtls/include -I $(CURRENT_DIR)deps/mbedtls/tf-psa-crypto/include \
+	-I $(CURRENT_DIR)deps/mbedtls/tf-psa-crypto/drivers/builtin/include
 
+LDFLAGS_MBEDTLS := -Wl,-static -Wl,--gc-sections
+PASSED_MBEDTLS_CFLAGS := -Os -fPIC -nostdinc -nostdlib -DCKB_DECLARATION_ONLY -I $(CURRENT_DIR)deps/ckb-c-stdlib/libc -I $(CURRENT_DIR)deps -I $(CURRENT_DIR)include -fdata-sections -ffunction-sections
 CFLAGS_BLST := -fno-builtin-printf -Ideps/blst/bindings $(subst ckb-c-stdlib,ckb-c-stdlib-202106,$(CFLAGS))
 CKB_VM_CLI := ckb-vm-b-cli
 
@@ -36,10 +41,10 @@ all: build/htlc build/secp256k1_blake2b_sighash_all_lib.so build/or build/simple
 secp256r1: deps/libecc-riscv-optimized build/secp256r1_blake160_sighash_all build/secp256r1_bench
 
 docker-interactive:
-	docker run --user ${DOCKER_USER} --rm -it -v "${CURRENT_DIR}:/code" --workdir /code --entrypoint /bin/bash ${DOCKER_EXTRA_FLAGS} ${BUILDER_DOCKER}
+	docker run --rm -it -v "${CURRENT_DIR}:/code" --workdir /code --entrypoint /bin/bash ${DOCKER_EXTRA_FLAGS} ${BUILDER_DOCKER}
 
 all-via-docker:
-	docker run --user ${DOCKER_USER} --rm -v `pwd`:/code ${BUILDER_DOCKER} bash -c "cd /code && make"
+	docker run --rm -v `pwd`:/code ${BUILDER_DOCKER} bash -c "cd /code && make"
 
 secp256r1-via-docker:
 	docker run --user ${DOCKER_USER} --rm -v `pwd`:/code ${BUILDER_DOCKER} bash -c "cd /code && make secp256r1"
@@ -137,22 +142,26 @@ build/simple_udt: c/simple_udt.c
 	$(OBJCOPY) --strip-debug --strip-all $@
 
 
-deps/mbedtls/library/libmbedcrypto.a:
+deps/mbedtls/build/library/libmbedcrypto.a:
+	apt-get install -y python3-jinja2 python3-jsonschema
 	cp deps/mbedtls-config-template.h deps/mbedtls/include/mbedtls/mbedtls_config.h
-	make -C deps/mbedtls/library CC=${CC} LD=${LD} CFLAGS="${PASSED_MBEDTLS_CFLAGS}" PYTHON=echo libmbedcrypto.a
-
+	cp deps/crypto-config-template.h deps/mbedtls/tf-psa-crypto/include/psa/crypto_config.h
+	rm -rf deps/mbedtls/build && mkdir -p deps/mbedtls/build
+	cd deps/mbedtls/build && CC=${CC} LD=${LD} CFLAGS="${PASSED_MBEDTLS_CFLAGS}" cmake -DCMAKE_VERBOSE_MAKEFILE=ON ..
+	cd deps/mbedtls/build && make VERBOSE=1 lib
+	
 build/impl.o: deps/ckb-c-stdlib/libc/src/impl.c
 	$(CC) -c $(filter-out -DCKB_DECLARATION_ONLY, $(CFLAGS_MBEDTLS)) $(LDFLAGS_MBEDTLS) -o $@ $^
 
 rsa_sighash_all-via-docker:
 	docker run --rm -v `pwd`:/code ${BUILDER_DOCKER} bash -c "cd /code && make build/rsa_sighash_all"
 
-build/rsa_sighash_all: c/rsa_sighash_all.c deps/mbedtls/library/libmbedcrypto.a
+build/rsa_sighash_all: c/rsa_sighash_all.c deps/mbedtls/build/library/libmbedcrypto.a
 	$(CC) $(CFLAGS_MBEDTLS) $(LDFLAGS_MBEDTLS) -D__SHARED_LIBRARY__ -fPIC -fPIE -pie -Wl,--dynamic-list c/rsa.syms -o $@ $^
 	$(OBJCOPY) --only-keep-debug $@ $@.debug
 	$(OBJCOPY) --strip-debug --strip-all $@
 
-simulator/build/rsa_sighash_all_test: simulator/rsa_sighash_all_usesim.c deps/mbedtls/library/libmbedcrypto.a
+simulator/build/rsa_sighash_all_test: simulator/rsa_sighash_all_usesim.c deps/mbedtls/build/library/libmbedcrypto.a
 	riscv64-unknown-elf-gcc -DRSA_RUN_TEST $(CFLAGS_MBEDTLS) ${LDFLAGS_MBEDTLS} -o $@ $^
 
 rsa_sighash_clean:
@@ -225,7 +234,7 @@ clean:
 	rm -rf build/simple_udt build/secp256k1_blake2b_sighash_all_dual build/and
 	rm -rf build/secp256r1_blake160_c* build/secp256r1_blake160_sighash_*
 	make -C deps/secp256k1 clean || true
-	make -C deps/mbedtls/library clean
+	rm -rf deps/mbedtls/build
 	make -C ${LIBECC_OPTIMIZED_PATH} clean
 	rm -f build/rsa_sighash_all
 	rm -f build/blst* build/server.o build/server-asm.o
