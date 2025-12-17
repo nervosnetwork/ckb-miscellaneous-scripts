@@ -1,10 +1,12 @@
 // # rsa_sighash_all
 // same as secp256k1_blake2b_sighash_all_dual but with RSA (mbedtls)
-//#define CKB_C_STDLIB_PRINTF
-//#include <stdio.h>
+// #define CKB_C_STDLIB_PRINTF
+// #include <stdio.h>
 #ifndef ASSERT
 #define ASSERT(s) (void)0
 #endif
+
+#define MBEDTLS_ALLOW_PRIVATE_ACCESS
 
 #include "rsa_sighash_all.h"
 
@@ -12,10 +14,12 @@
 
 #include "blake2b.h"
 #include "blockchain.h"
-#include "mbedtls/ecdsa.h"
 #include "mbedtls/md.h"
 #include "mbedtls/memory_buffer_alloc.h"
-#include "mbedtls/rsa.h"
+#include "mbedtls/private/bignum.h"
+#include "mbedtls/private/ecdsa.h"
+#include "mbedtls/private/ecp.h"
+#include "mbedtls/private/rsa.h"
 
 #ifdef CKB_USE_SIM
 #include "ckb_consts.h"
@@ -174,10 +178,13 @@ int validate_signature_rsa(void *prefilled_data,
       ERROR_RSA_INVALID_PARAM2);
   CHECK2(*output_len >= BLAKE160_SIZE, ERROR_RSA_INVALID_BLADE2B_SIZE);
 
-  mbedtls_mpi_read_binary_le(&rsa.private_E, (const unsigned char *)&input_info->E,
+  mbedtls_mpi_read_binary_le(&rsa.MBEDTLS_PRIVATE(E),
+                             (const unsigned char *)&input_info->E,
                              sizeof(uint32_t));
-  mbedtls_mpi_read_binary_le(&rsa.private_N, input_info->N, input_info->key_size / 8);
-  rsa.private_len = (mbedtls_mpi_bitlen(&rsa.private_N) + 7) >> 3;
+  mbedtls_mpi_read_binary_le(&rsa.MBEDTLS_PRIVATE(N), input_info->N,
+                             input_info->key_size / 8);
+  rsa.MBEDTLS_PRIVATE(len) =
+      (mbedtls_mpi_bitlen(&rsa.MBEDTLS_PRIVATE(N)) + 7) >> 3;
 
   ret = md_string(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), msg_buf,
                   msg_size, hash_buf);
@@ -217,11 +224,11 @@ int serialize_secp256r1info(const mbedtls_ecp_point *Q, const mbedtls_mpi *r,
                             mbedtls_mpi *s, Secp256r1Info *info) {
   int err = 0;
 
-  err = mbedtls_mpi_write_binary_le(&Q->private_X, info->public_key,
+  err = mbedtls_mpi_write_binary_le(&Q->MBEDTLS_PRIVATE(X), info->public_key,
                                     SECP256R1_PUBLIC_KEY_SIZE / 2);
   CHECK(err);
   err = mbedtls_mpi_write_binary_le(
-      &Q->private_Y, info->public_key + SECP256R1_PUBLIC_KEY_SIZE / 2,
+      &Q->MBEDTLS_PRIVATE(Y), info->public_key + SECP256R1_PUBLIC_KEY_SIZE / 2,
       SECP256R1_PUBLIC_KEY_SIZE / 2);
   CHECK(err);
 
@@ -244,16 +251,17 @@ int deserialize_secp256r1info(mbedtls_ecp_point *Q, mbedtls_mpi *r,
   mbedtls_mpi_init(r);
   mbedtls_mpi_init(s);
 
-  err = mbedtls_mpi_read_binary_le(&Q->private_X, info->public_key,
+  err = mbedtls_mpi_read_binary_le(&Q->MBEDTLS_PRIVATE(X), info->public_key,
                                    SECP256R1_PUBLIC_KEY_SIZE / 2);
   CHECK(err);
   err = mbedtls_mpi_read_binary_le(
-      &Q->private_Y, info->public_key + SECP256R1_PUBLIC_KEY_SIZE / 2,
+      &Q->MBEDTLS_PRIVATE(Y), info->public_key + SECP256R1_PUBLIC_KEY_SIZE / 2,
       SECP256R1_PUBLIC_KEY_SIZE / 2);
   CHECK(err);
 
   const uint32_t one = 1;
-  err = mbedtls_mpi_read_binary_le(&Q->private_Z, (const unsigned char *)&one, 4);
+  err = mbedtls_mpi_read_binary_le(&Q->MBEDTLS_PRIVATE(Z),
+                                   (const unsigned char *)&one, 4);
   CHECK(err);
 
   err = mbedtls_mpi_read_binary_le(r, info->sig, SECP256R1_SIG_SIZE / 2);

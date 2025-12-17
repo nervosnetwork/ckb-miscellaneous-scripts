@@ -169,7 +169,7 @@
  *
  * Enable this module to enable the buffer memory allocator.
  */
-//#define MBEDTLS_MEMORY_BUFFER_ALLOC_C
+#define MBEDTLS_MEMORY_BUFFER_ALLOC_C
 
 /**
  * \def MBEDTLS_FS_IO
@@ -366,7 +366,7 @@
  *
  * Enable this layer to allow use of alternative memory allocators.
  */
-//#define MBEDTLS_PLATFORM_MEMORY
+#define MBEDTLS_PLATFORM_MEMORY
 
 /**
  * \def MBEDTLS_PLATFORM_NO_STD_FUNCTIONS
@@ -385,7 +385,7 @@
  * Uncomment to prevent default assignment of standard functions in the
  * platform layer.
  */
-//#define MBEDTLS_PLATFORM_NO_STD_FUNCTIONS
+#define MBEDTLS_PLATFORM_NO_STD_FUNCTIONS
 
 /**
  * Uncomment the macro to let Mbed TLS use your alternate implementation of
@@ -475,7 +475,8 @@
 /* To use the following function macros, MBEDTLS_PLATFORM_C must be enabled. */
 /* MBEDTLS_PLATFORM_XXX_MACRO and MBEDTLS_PLATFORM_XXX_ALT cannot both be defined */
 //#define MBEDTLS_PLATFORM_CALLOC_MACRO        calloc /**< Default allocator macro to use, can be undefined. See MBEDTLS_PLATFORM_STD_CALLOC for requirements. */
-//#define MBEDTLS_PLATFORM_EXIT_MACRO            exit /**< Default exit macro to use, can be undefined */
+int ckb_exit(signed char);
+#define MBEDTLS_PLATFORM_EXIT_MACRO            ckb_exit /**< Default exit macro to use, can be undefined */
 //#define MBEDTLS_PLATFORM_FREE_MACRO            free /**< Default free macro to use, can be undefined. See MBEDTLS_PLATFORM_STD_FREE for requirements. */
 //#define MBEDTLS_PLATFORM_FPRINTF_MACRO      fprintf /**< Default fprintf macro to use, can be undefined */
 //#define MBEDTLS_PLATFORM_MS_TIME_TYPE_MACRO   int64_t //#define MBEDTLS_PLATFORM_MS_TIME_TYPE_MACRO   int64_t /**< Default milliseconds time macro to use, can be undefined. MBEDTLS_HAVE_TIME must be enabled. It must be signed, and at least 64 bits. If it is changed from the default, MBEDTLS_PRINTF_MS_TIME must be updated to match.*/
@@ -527,6 +528,7 @@
 //#define MBEDTLS_PLATFORM_TIME_TYPE_MACRO       time_t /**< Default time macro to use, can be undefined. MBEDTLS_HAVE_TIME must be enabled */
 //#define MBEDTLS_PLATFORM_VSNPRINTF_MACRO    vsnprintf /**< Default vsnprintf macro to use, can be undefined */
 //#define MBEDTLS_PRINTF_MS_TIME    PRId64 /**< Default fmt for printf. That's avoid compiler warning if mbedtls_ms_time_t is redefined */
+#define MBEDTLS_PRINTF_MS_TIME "lld"
 
 /** \} name SECTION: Platform abstraction layer */
 
@@ -649,7 +651,7 @@
  *
  * Enable the checkup functions (*_self_test).
  */
-#define MBEDTLS_SELF_TEST
+// #define MBEDTLS_SELF_TEST
 
 /**
  * \def MBEDTLS_TEST_CONSTANT_FLOW_MEMSAN
@@ -977,7 +979,7 @@
  *
  * Enable this option if this loss of security is acceptable to you.
  */
-//#define MBEDTLS_ENTROPY_NO_SOURCES_OK
+#define MBEDTLS_ENTROPY_NO_SOURCES_OK
 
 /**
  * \def MBEDTLS_ENTROPY_NV_SEED
@@ -1170,7 +1172,7 @@
  *
  * \note This option is experimental and may be removed without notice.
  */
-//#define MBEDTLS_PSA_CRYPTO_EXTERNAL_RNG
+#define MBEDTLS_PSA_CRYPTO_EXTERNAL_RNG
 
 /* MBEDTLS_PSA_CRYPTO_KEY_ID_ENCODES_OWNER
  *
